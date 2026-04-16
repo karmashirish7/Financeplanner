@@ -16,8 +16,11 @@ CREATE TABLE IF NOT EXISTS public.precious_metal_rates (
 ALTER TABLE public.precious_metal_rates ENABLE ROW LEVEL SECURITY;
 
 -- Any authenticated user can read rates (they are shared/public data, not personal)
-CREATE POLICY "metal_rates_select" ON public.precious_metal_rates
-  FOR SELECT USING (auth.role() = 'authenticated');
+DO $$ BEGIN
+  CREATE POLICY "metal_rates_select" ON public.precious_metal_rates
+    FOR SELECT USING (auth.role() = 'authenticated');
+EXCEPTION WHEN duplicate_object THEN NULL;
+END $$;
 
 -- Only the service role (edge function) can insert / update — no policy needed for that.
 
