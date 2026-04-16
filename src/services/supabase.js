@@ -115,6 +115,30 @@ export const db = {
     color: d.color,
   }),
 
+  // ── Liabilities ───────────────────────────────────────────
+  toLiability: (r) => ({
+    id: r.id,
+    name: r.name,
+    type: r.type,
+    balance: Number(r.balance),
+    interestRate: r.interest_rate != null ? Number(r.interest_rate) : null,
+    minimumPayment: r.minimum_payment != null ? Number(r.minimum_payment) : null,
+    dueDay: r.due_day ?? null,
+    color: r.color,
+    updatedAt: r.updated_at,
+  }),
+  fromLiability: (d, userId) => ({
+    user_id: userId,
+    name: d.name,
+    type: d.type,
+    balance: d.balance,
+    interest_rate: d.interestRate ?? null,
+    minimum_payment: d.minimumPayment ?? null,
+    due_day: d.dueDay ?? null,
+    color: d.color,
+    updated_at: new Date().toISOString(),
+  }),
+
   // ── Budgets ───────────────────────────────────────────────
   toBudget: (r) => ({
     id: r.id,

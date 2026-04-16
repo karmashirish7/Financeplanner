@@ -10,6 +10,7 @@ import Budget from './pages/Budget'
 import Analytics from './pages/Analytics'
 import AIPlanner from './pages/AIPlanner'
 import Assets from './pages/Assets'
+import Liabilities from './pages/Liabilities'
 
 // Full-screen spinner shown while Supabase resolves the session
 function AuthLoader() {
@@ -47,6 +48,7 @@ function AppRoutes() {
         <Route path="transactions" element={<Transactions />} />
         <Route path="accounts"     element={<Accounts />} />
         <Route path="assets"       element={<Assets />} />
+        <Route path="liabilities"  element={<Liabilities />} />
         <Route path="goals"        element={<Goals />} />
         <Route path="budget"       element={<Budget />} />
         <Route path="analytics"    element={<Analytics />} />

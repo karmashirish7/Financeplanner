@@ -3,7 +3,7 @@ import { useApp } from '../../context/AppContext'
 import {
   HiHome, HiArrowsRightLeft, HiBuildingLibrary,
   HiFlag, HiCalculator, HiChartBar, HiSparkles,
-  HiArrowRightOnRectangle, HiXMark, HiCube,
+  HiArrowRightOnRectangle, HiXMark, HiCube, HiCreditCard,
 } from 'react-icons/hi2'
 import { useState } from 'react'
 
@@ -12,6 +12,7 @@ const NAV = [
   { to: '/transactions',label: 'Transactions', icon: HiArrowsRightLeft },
   { to: '/accounts',    label: 'Accounts',     icon: HiBuildingLibrary },
   { to: '/assets',      label: 'Assets',       icon: HiCube },
+  { to: '/liabilities', label: 'Liabilities',  icon: HiCreditCard },
   { to: '/goals',       label: 'Goals',        icon: HiFlag },
   { to: '/budget',      label: 'Budget',       icon: HiCalculator },
   { to: '/analytics',   label: 'Analytics',    icon: HiChartBar },

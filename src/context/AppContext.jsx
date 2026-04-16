@@ -119,6 +119,7 @@ const EMPTY = {
   assets:       [],
   goals:        [],
   budgets:      [],
+  liabilities:  [],
 }
 
 export function AppProvider({ children }) {
@@ -131,13 +132,14 @@ export function AppProvider({ children }) {
   // ── Fetch all user data ──────────────────────────────────────────────────
   const fetchAll = useCallback(async (uid) => {
     setDataLoading(true)
-    const [cats, accs, txns, assets, goals, budgets, rates] = await Promise.all([
+    const [cats, accs, txns, assets, goals, budgets, liabilities, rates] = await Promise.all([
       supabase.from('categories').select('*').eq('user_id', uid).order('name'),
       supabase.from('accounts').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('transactions').select('*').eq('user_id', uid).order('date', { ascending: false }),
       supabase.from('assets').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('goals').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('budgets').select('*').eq('user_id', uid),
+      supabase.from('liabilities').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('precious_metal_rates').select('*').order('date', { ascending: false }).limit(4),
     ])
 
@@ -153,12 +155,13 @@ export function AppProvider({ children }) {
     setMetalRates(ratesObj)
 
     setData({
-      categories:   (cats.data    || []).map(db.toCategory),
-      accounts:     (accs.data    || []).map(db.toAccount),
-      transactions: (txns.data    || []).map(db.toTransaction),
-      assets:       (assets.data  || []).map(db.toAsset),
-      goals:        (goals.data   || []).map(db.toGoal),
-      budgets:      (budgets.data || []).map(db.toBudget),
+      categories:   (cats.data        || []).map(db.toCategory),
+      accounts:     (accs.data        || []).map(db.toAccount),
+      transactions: (txns.data        || []).map(db.toTransaction),
+      assets:       (assets.data      || []).map(db.toAsset),
+      goals:        (goals.data       || []).map(db.toGoal),
+      budgets:      (budgets.data     || []).map(db.toBudget),
+      liabilities:  (liabilities.data || []).map(db.toLiability),
     })
     setDataLoading(false)
   }, [])
@@ -186,18 +189,19 @@ export function AppProvider({ children }) {
 
   // ── Computed values (same logic as before) ───────────────────────────────
   const computed = useMemo(() => {
-    const { accounts, transactions, assets, goals, budgets, categories } = data
+    const { accounts, transactions, assets, goals, budgets, categories, liabilities } = data
     const now = new Date()
     const cm  = now.getMonth() + 1
     const cy  = now.getFullYear()
 
-    const currentMonthTxns = transactions.filter(t => isInMonth(t.date, cm, cy))
-    const monthlyIncome    = currentMonthTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
-    const monthlyExpenses  = currentMonthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
-    const savingsRate      = monthlyIncome > 0 ? ((monthlyIncome - monthlyExpenses) / monthlyIncome) * 100 : 0
-    const totalBalance     = accounts.reduce((s, a) => s + a.balance, 0)
-    const totalAssets      = assets.reduce((s, a) => s + a.value, 0)
-    const netWorth         = totalBalance + totalAssets
+    const currentMonthTxns  = transactions.filter(t => isInMonth(t.date, cm, cy))
+    const monthlyIncome     = currentMonthTxns.filter(t => t.type === 'income').reduce((s, t) => s + t.amount, 0)
+    const monthlyExpenses   = currentMonthTxns.filter(t => t.type === 'expense').reduce((s, t) => s + t.amount, 0)
+    const savingsRate       = monthlyIncome > 0 ? ((monthlyIncome - monthlyExpenses) / monthlyIncome) * 100 : 0
+    const totalBalance      = accounts.reduce((s, a) => s + a.balance, 0)
+    const totalAssets       = assets.reduce((s, a) => s + a.value, 0)
+    const totalLiabilities  = liabilities.reduce((s, l) => s + l.balance, 0)
+    const netWorth          = totalBalance + totalAssets - totalLiabilities
 
     const categoryExpenses = {}
     currentMonthTxns.filter(t => t.type === 'expense').forEach(t => {
@@ -254,7 +258,7 @@ export function AppProvider({ children }) {
     healthScore = Math.max(0, Math.min(100, healthScore))
 
     return {
-      totalBalance, totalAssets, netWorth,
+      totalBalance, totalAssets, totalLiabilities, netWorth,
       monthlyIncome, monthlyExpenses, savingsRate,
       categoryExpenses, last6Months, netWorthHistory,
       budgetStatus, burnRate, projectedExpense, healthScore,
@@ -298,6 +302,7 @@ export function AppProvider({ children }) {
         supabase.from('budgets').delete().eq('user_id', user.id),
         supabase.from('goals').delete().eq('user_id', user.id),
         supabase.from('assets').delete().eq('user_id', user.id),
+        supabase.from('liabilities').delete().eq('user_id', user.id),
         supabase.from('transactions').delete().eq('user_id', user.id),
         supabase.from('accounts').delete().eq('user_id', user.id),
       ])
@@ -389,6 +394,23 @@ export function AppProvider({ children }) {
       const { error } = await supabase.from('goals').delete().eq('id', id)
       if (error) throw error
       setData(s => ({ ...s, goals: s.goals.filter(g => g.id !== id) }))
+    },
+
+    // ── Liabilities ────────────────────────────────────────────────────────
+    async addLiability(d) {
+      const { data: row, error } = await supabase.from('liabilities').insert(db.fromLiability(d, user.id)).select().single()
+      if (error) throw error
+      setData(s => ({ ...s, liabilities: [...s.liabilities, db.toLiability(row)] }))
+    },
+    async updateLiability(d) {
+      const { error } = await supabase.from('liabilities').update(db.fromLiability(d, user.id)).eq('id', d.id)
+      if (error) throw error
+      setData(s => ({ ...s, liabilities: s.liabilities.map(l => l.id === d.id ? { ...d, updatedAt: new Date().toISOString() } : l) }))
+    },
+    async deleteLiability(id) {
+      const { error } = await supabase.from('liabilities').delete().eq('id', id)
+      if (error) throw error
+      setData(s => ({ ...s, liabilities: s.liabilities.filter(l => l.id !== id) }))
     },
 
     // ── Budgets ────────────────────────────────────────────────────────────
