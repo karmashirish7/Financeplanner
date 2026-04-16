@@ -73,6 +73,8 @@ export const db = {
     name: r.name,
     type: r.type,
     value: Number(r.value),
+    quantityTola: r.quantity_tola != null ? Number(r.quantity_tola) : null,
+    rateMode: r.rate_mode || 'auto',
     updatedAt: r.updated_at,
   }),
   fromAsset: (d, userId) => ({
@@ -80,7 +82,17 @@ export const db = {
     name: d.name,
     type: d.type,
     value: d.value,
+    quantity_tola: d.quantityTola ?? null,
+    rate_mode: d.rateMode ?? 'auto',
     updated_at: new Date().toISOString(),
+  }),
+
+  // ── Precious Metal Rates ──────────────────────────────────
+  toMetalRate: (r) => ({
+    metal: r.metal,
+    ratePerTola: Number(r.rate_per_tola),
+    date: r.date,
+    fetchedAt: r.fetched_at,
   }),
 
   // ── Goals ─────────────────────────────────────────────────

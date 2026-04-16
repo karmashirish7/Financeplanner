@@ -126,18 +126,32 @@ export function AppProvider({ children }) {
   const [authLoading, setAuthLoading] = useState(true)
   const [dataLoading, setDataLoading] = useState(false)
   const [data,        setData]        = useState(EMPTY)
+  const [metalRates,  setMetalRates]  = useState({ gold: null, silver: null })
 
   // ── Fetch all user data ──────────────────────────────────────────────────
   const fetchAll = useCallback(async (uid) => {
     setDataLoading(true)
-    const [cats, accs, txns, assets, goals, budgets] = await Promise.all([
+    const [cats, accs, txns, assets, goals, budgets, rates] = await Promise.all([
       supabase.from('categories').select('*').eq('user_id', uid).order('name'),
       supabase.from('accounts').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('transactions').select('*').eq('user_id', uid).order('date', { ascending: false }),
       supabase.from('assets').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('goals').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('budgets').select('*').eq('user_id', uid),
+      supabase.from('precious_metal_rates').select('*').order('date', { ascending: false }).limit(4),
     ])
+
+    // Build { gold: latestRate, silver: latestRate }
+    const ratesObj = { gold: null, silver: null }
+    if (rates.data) {
+      rates.data.forEach(r => {
+        if ((r.metal === 'gold' || r.metal === 'silver') && !ratesObj[r.metal]) {
+          ratesObj[r.metal] = db.toMetalRate(r)
+        }
+      })
+    }
+    setMetalRates(ratesObj)
+
     setData({
       categories:   (cats.data    || []).map(db.toCategory),
       accounts:     (accs.data    || []).map(db.toAccount),
@@ -290,6 +304,13 @@ export function AppProvider({ children }) {
       await fetchAll(user.id)
     },
 
+    // ── Metal Rates ────────────────────────────────────────────
+    async refreshMetalRates() {
+      const { error } = await supabase.functions.invoke('scrape-metal-rates', { body: {} })
+      if (error) throw new Error(error.message || 'Rate refresh failed')
+      if (user) await fetchAll(user.id)
+    },
+
     // ── Accounts ───────────────────────────────────────────────────────────
     async addAccount(d) {
       const { data: row, error } = await supabase.from('accounts').insert(db.fromAccount(d, user.id)).select().single()
@@ -404,6 +425,8 @@ export function AppProvider({ children }) {
     dataLoading,
     // Data
     ...data,
+    // Metal rates (shared, not per-user)
+    metalRates,
     // Computed
     computed,
     // Actions
