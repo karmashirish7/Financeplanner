@@ -13,20 +13,30 @@ export default function Transactions() {
   const [editing, setEditing]   = useState(null)
   const [form, setForm]         = useState(EMPTY)
   const [filter, setFilter]     = useState({ type: 'all', categoryId: '', search: '' })
+  const [saving, setSaving]     = useState(false)
+  const [error, setError]       = useState('')
 
-  function openAdd() { setEditing(null); setForm(EMPTY); setModal(true) }
-  function openEdit(t) { setEditing(t); setForm({ ...t, amount: String(t.amount) }); setModal(true) }
-  function close() { setModal(false); setEditing(null) }
+  function openAdd() { setEditing(null); setForm(EMPTY); setError(''); setModal(true) }
+  function openEdit(t) { setEditing(t); setForm({ ...t, amount: String(t.amount) }); setError(''); setModal(true) }
+  function close() { setModal(false); setEditing(null); setError('') }
 
   function set(field, value) { setForm(f => ({ ...f, [field]: value })) }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
     if (!form.amount || !form.accountId || !form.categoryId || !form.date) return
-    const data = { ...form, amount: parseFloat(form.amount) }
-    if (editing) updateTransaction(data)
-    else addTransaction(data)
-    close()
+    setSaving(true)
+    setError('')
+    try {
+      const data = { ...form, amount: parseFloat(form.amount) }
+      if (editing) await updateTransaction(data)
+      else await addTransaction(data)
+      close()
+    } catch (err) {
+      setError(err?.message || 'Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const filtered = useMemo(() => {
@@ -245,10 +255,13 @@ export default function Transactions() {
             <label htmlFor="recurring" className="text-sm text-gray-700">Recurring monthly</label>
           </div>
 
+          {error && (
+            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+          )}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={close} className="btn-secondary flex-1">Cancel</button>
-            <button type="submit" className="btn-primary flex-1">
-              {editing ? 'Save Changes' : 'Add Transaction'}
+            <button type="button" onClick={close} disabled={saving} className="btn-secondary flex-1">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary flex-1">
+              {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Transaction'}
             </button>
           </div>
         </form>

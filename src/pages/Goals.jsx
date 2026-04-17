@@ -28,23 +28,33 @@ export default function Goals() {
   const [modal, setModal]     = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm]       = useState(EMPTY)
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
 
-  function openAdd()  { setEditing(null); setForm(EMPTY); setModal(true) }
-  function openEdit(g){ setEditing(g); setForm({ ...g, targetAmount: String(g.targetAmount), currentAmount: String(g.currentAmount), monthlyContribution: String(g.monthlyContribution) }); setModal(true) }
-  function close()    { setModal(false); setEditing(null) }
+  function openAdd()  { setEditing(null); setForm(EMPTY); setError(''); setModal(true) }
+  function openEdit(g){ setEditing(g); setForm({ ...g, targetAmount: String(g.targetAmount), currentAmount: String(g.currentAmount), monthlyContribution: String(g.monthlyContribution) }); setError(''); setModal(true) }
+  function close()    { setModal(false); setEditing(null); setError('') }
   function set(f, v)  { setForm(p => ({ ...p, [f]: v })) }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    const data = {
-      ...form,
-      targetAmount: parseFloat(form.targetAmount) || 0,
-      currentAmount: parseFloat(form.currentAmount) || 0,
-      monthlyContribution: parseFloat(form.monthlyContribution) || 0,
+    setSaving(true)
+    setError('')
+    try {
+      const data = {
+        ...form,
+        targetAmount: parseFloat(form.targetAmount) || 0,
+        currentAmount: parseFloat(form.currentAmount) || 0,
+        monthlyContribution: parseFloat(form.monthlyContribution) || 0,
+      }
+      if (editing) await updateGoal(data)
+      else await addGoal(data)
+      close()
+    } catch (err) {
+      setError(err?.message || 'Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
     }
-    if (editing) updateGoal(data)
-    else addGoal(data)
-    close()
   }
 
   const totalTargeted = goals.reduce((s, g) => s + g.targetAmount, 0)
@@ -213,9 +223,14 @@ export default function Goals() {
             </div>
           </div>
 
+          {error && (
+            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+          )}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={close} className="btn-secondary flex-1">Cancel</button>
-            <button type="submit" className="btn-primary flex-1">{editing ? 'Save Changes' : 'Add Goal'}</button>
+            <button type="button" onClick={close} disabled={saving} className="btn-secondary flex-1">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary flex-1">
+              {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Goal'}
+            </button>
           </div>
         </form>
       </Modal>

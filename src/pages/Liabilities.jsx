@@ -27,8 +27,10 @@ export default function Liabilities() {
   const [modal, setModal]     = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm]       = useState(EMPTY)
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
 
-  function openAdd()  { setEditing(null); setForm(EMPTY); setModal(true) }
+  function openAdd()  { setEditing(null); setForm(EMPTY); setError(''); setModal(true) }
   function openEdit(l) {
     setEditing(l)
     setForm({
@@ -38,23 +40,32 @@ export default function Liabilities() {
       minimumPayment: l.minimumPayment != null ? String(l.minimumPayment) : '',
       dueDay:         l.dueDay         != null ? String(l.dueDay)         : '',
     })
+    setError('')
     setModal(true)
   }
-  function close()   { setModal(false); setEditing(null) }
+  function close()   { setModal(false); setEditing(null); setError('') }
   function set(f, v) { setForm(p => ({ ...p, [f]: v })) }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    const payload = {
-      ...form,
-      balance:        parseFloat(form.balance)        || 0,
-      interestRate:   form.interestRate   !== '' ? parseFloat(form.interestRate)   : null,
-      minimumPayment: form.minimumPayment !== '' ? parseFloat(form.minimumPayment) : null,
-      dueDay:         form.dueDay         !== '' ? parseInt(form.dueDay, 10)       : null,
+    setSaving(true)
+    setError('')
+    try {
+      const payload = {
+        ...form,
+        balance:        parseFloat(form.balance)        || 0,
+        interestRate:   form.interestRate   !== '' ? parseFloat(form.interestRate)   : null,
+        minimumPayment: form.minimumPayment !== '' ? parseFloat(form.minimumPayment) : null,
+        dueDay:         form.dueDay         !== '' ? parseInt(form.dueDay, 10)       : null,
+      }
+      if (editing) await updateLiability(payload)
+      else         await addLiability(payload)
+      close()
+    } catch (err) {
+      setError(err?.message || 'Failed to save. Please try again.')
+    } finally {
+      setSaving(false)
     }
-    if (editing) updateLiability(payload)
-    else         addLiability(payload)
-    close()
   }
 
   const TypeIcon = (type) => LIABILITY_TYPES.find(t => t.value === type)?.icon || HiEllipsisHorizontalCircle
@@ -204,9 +215,14 @@ export default function Liabilities() {
             </div>
           </div>
 
+          {error && (
+            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+          )}
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={close} className="btn-secondary flex-1">Cancel</button>
-            <button type="submit" className="btn-primary flex-1">{editing ? 'Save Changes' : 'Add Liability'}</button>
+            <button type="button" onClick={close} disabled={saving} className="btn-secondary flex-1">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary flex-1">
+              {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Liability'}
+            </button>
           </div>
         </form>
       </Modal>

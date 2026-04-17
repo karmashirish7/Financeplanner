@@ -19,18 +19,28 @@ export default function Accounts() {
   const [modal, setModal]     = useState(false)
   const [editing, setEditing] = useState(null)
   const [form, setForm]       = useState(EMPTY)
+  const [saving, setSaving]   = useState(false)
+  const [error, setError]     = useState('')
 
-  function openAdd()  { setEditing(null); setForm(EMPTY); setModal(true) }
-  function openEdit(a){ setEditing(a); setForm({ ...a, balance: String(a.balance) }); setModal(true) }
-  function close()    { setModal(false); setEditing(null) }
+  function openAdd()  { setEditing(null); setForm(EMPTY); setError(''); setModal(true) }
+  function openEdit(a){ setEditing(a); setForm({ ...a, balance: String(a.balance) }); setError(''); setModal(true) }
+  function close()    { setModal(false); setEditing(null); setError('') }
   function set(f, v)  { setForm(p => ({ ...p, [f]: v })) }
 
-  function handleSubmit(e) {
+  async function handleSubmit(e) {
     e.preventDefault()
-    const data = { ...form, balance: parseFloat(form.balance) || 0 }
-    if (editing) updateAccount(data)
-    else addAccount(data)
-    close()
+    setSaving(true)
+    setError('')
+    try {
+      const data = { ...form, balance: parseFloat(form.balance) || 0 }
+      if (editing) await updateAccount(data)
+      else await addAccount(data)
+      close()
+    } catch (err) {
+      setError(err?.message || 'Failed to save account. Please try again.')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const TypeIcon = (type) => ACCOUNT_TYPES.find(t => t.value === type)?.icon || HiBuildingLibrary
@@ -152,9 +162,15 @@ export default function Accounts() {
             </div>
           </div>
 
+          {error && (
+            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
+          )}
+
           <div className="flex gap-3 pt-2">
-            <button type="button" onClick={close} className="btn-secondary flex-1">Cancel</button>
-            <button type="submit" className="btn-primary flex-1">{editing ? 'Save Changes' : 'Add Account'}</button>
+            <button type="button" onClick={close} disabled={saving} className="btn-secondary flex-1">Cancel</button>
+            <button type="submit" disabled={saving} className="btn-primary flex-1">
+              {saving ? 'Saving…' : editing ? 'Save Changes' : 'Add Account'}
+            </button>
           </div>
         </form>
       </Modal>
