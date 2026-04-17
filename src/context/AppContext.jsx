@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useMemo, useCallback } from 'react'
+import { createContext, useContext, useEffect, useRef, useState, useMemo, useCallback } from 'react'
 import { subMonths } from 'date-fns'
 import { supabase, db } from '../services/supabase'
 import { isInMonth } from '../utils/formatters'
@@ -152,6 +152,7 @@ export function AppProvider({ children }) {
   const [dataLoading, setDataLoading] = useState(false)
   const [data,        setData]        = useState(EMPTY)
   const [metalRates,  setMetalRates]  = useState({ gold: null, silver: null })
+  const dataLoadedRef = useRef(false) // guard against spurious SIGNED_IN re-fetches
 
   // ── Fetch all user data ──────────────────────────────────────────────────
   const fetchAll = useCallback(async (uid) => {
@@ -205,16 +206,26 @@ export function AppProvider({ children }) {
     supabase.auth.getSession().then(({ data: { session } }) => {
       const u = session?.user ?? null
       setUser(u)
-      if (u) fetchAll(u.id).finally(() => setAuthLoading(false))
-      else setAuthLoading(false)
+      if (u) {
+        dataLoadedRef.current = true
+        fetchAll(u.id).finally(() => setAuthLoading(false))
+      } else {
+        setAuthLoading(false)
+      }
     })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       const u = session?.user ?? null
       setUser(u)
       if (u) {
-        if (event === 'SIGNED_IN') fetchAll(u.id)
+        // Only refetch on an actual new sign-in, not token refreshes or
+        // INITIAL_SESSION which may fire alongside getSession()
+        if (event === 'SIGNED_IN' && !dataLoadedRef.current) {
+          dataLoadedRef.current = true
+          fetchAll(u.id)
+        }
       } else {
+        dataLoadedRef.current = false
         setData(EMPTY)
       }
     })
@@ -317,6 +328,7 @@ export function AppProvider({ children }) {
     },
     async logout() {
       await supabase.auth.signOut()
+      dataLoadedRef.current = false
       setUser(null)
       setData(EMPTY)
     },

@@ -125,6 +125,9 @@ export default function Accounts() {
       {/* Modal */}
       <Modal isOpen={modal} onClose={close} title={editing ? 'Edit Account' : 'Add Account'}>
         <form onSubmit={handleSubmit} className="space-y-4">
+          {error && (
+            <p className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{error}</p>
+          )}
           <div>
             <label className="label">Account Name</label>
             <input type="text" placeholder="e.g. Nabil Bank Savings" required
@@ -161,10 +164,6 @@ export default function Accounts() {
               ))}
             </div>
           </div>
-
-          {error && (
-            <p className="text-xs text-red-500 bg-red-50 px-3 py-2 rounded-lg">{error}</p>
-          )}
 
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={close} disabled={saving} className="btn-secondary flex-1">Cancel</button>
