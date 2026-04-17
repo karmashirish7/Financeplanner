@@ -371,17 +371,94 @@ export function AppProvider({ children }) {
     async addTransaction(d) {
       const { data: row, error } = await supabase.from('transactions').insert(db.fromTransaction(d, user.id)).select().single()
       if (error) throw error
-      setData(s => ({ ...s, transactions: [db.toTransaction(row), ...s.transactions] }))
+
+      const delta = d.type === 'income' ? d.amount : -d.amount
+      const { error: balErr } = await supabase.rpc('adjust_account_balance', {
+        p_account_id: d.accountId,
+        p_delta:      delta,
+      })
+      if (balErr) throw balErr
+
+      setData(s => ({
+        ...s,
+        transactions: [db.toTransaction(row), ...s.transactions],
+        accounts: s.accounts.map(a =>
+          a.id === d.accountId ? { ...a, balance: a.balance + delta } : a
+        ),
+      }))
     },
     async updateTransaction(d) {
+      // Capture old transaction before the DB write
+      const oldTxn = data.transactions.find(t => t.id === d.id)
       const { error } = await supabase.from('transactions').update(db.fromTransaction(d, user.id)).eq('id', d.id)
       if (error) throw error
-      setData(s => ({ ...s, transactions: s.transactions.map(t => t.id === d.id ? d : t) }))
+
+      if (oldTxn) {
+        const oldDelta = oldTxn.type === 'income' ? oldTxn.amount : -oldTxn.amount
+        const newDelta = d.type      === 'income' ? d.amount      : -d.amount
+
+        if (oldTxn.accountId === d.accountId) {
+          const net = newDelta - oldDelta
+          if (net !== 0) {
+            const { error: balErr } = await supabase.rpc('adjust_account_balance', {
+              p_account_id: d.accountId,
+              p_delta:      net,
+            })
+            if (balErr) throw balErr
+          }
+        } else {
+          // Account changed — undo old, apply new
+          const { error: e1 } = await supabase.rpc('adjust_account_balance', { p_account_id: oldTxn.accountId, p_delta: -oldDelta })
+          const { error: e2 } = await supabase.rpc('adjust_account_balance', { p_account_id: d.accountId,       p_delta: newDelta })
+          if (e1) throw e1
+          if (e2) throw e2
+        }
+      }
+
+      setData(s => {
+        const oldT     = s.transactions.find(t => t.id === d.id)
+        const oldDelta = oldT ? (oldT.type === 'income' ? oldT.amount : -oldT.amount) : 0
+        const newDelta = d.type === 'income' ? d.amount : -d.amount
+
+        const accounts = s.accounts.map(a => {
+          if (!oldT) return a
+          if (oldT.accountId === d.accountId)
+            return a.id === d.accountId ? { ...a, balance: a.balance + (newDelta - oldDelta) } : a
+          if (a.id === oldT.accountId) return { ...a, balance: a.balance - oldDelta }
+          if (a.id === d.accountId)    return { ...a, balance: a.balance + newDelta }
+          return a
+        })
+
+        return { ...s, transactions: s.transactions.map(t => t.id === d.id ? d : t), accounts }
+      })
     },
     async deleteTransaction(id) {
+      // Capture before deleting so we know the amount/account
+      const txn = data.transactions.find(t => t.id === id)
       const { error } = await supabase.from('transactions').delete().eq('id', id)
       if (error) throw error
-      setData(s => ({ ...s, transactions: s.transactions.filter(t => t.id !== id) }))
+
+      if (txn) {
+        const delta = txn.type === 'income' ? txn.amount : -txn.amount
+        const { error: balErr } = await supabase.rpc('adjust_account_balance', {
+          p_account_id: txn.accountId,
+          p_delta:      -delta,
+        })
+        if (balErr) throw balErr
+      }
+
+      setData(s => {
+        const t = s.transactions.find(tx => tx.id === id)
+        if (!t) return { ...s, transactions: s.transactions.filter(tx => tx.id !== id) }
+        const delta = t.type === 'income' ? t.amount : -t.amount
+        return {
+          ...s,
+          transactions: s.transactions.filter(tx => tx.id !== id),
+          accounts: s.accounts.map(a =>
+            a.id === t.accountId ? { ...a, balance: a.balance - delta } : a
+          ),
+        }
+      })
     },
 
     // ── Categories ─────────────────────────────────────────────────────────

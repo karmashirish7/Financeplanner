@@ -22,8 +22,9 @@ export function assetMeta(type) {
   return ASSET_TYPES.find(t => t.value === type) || ASSET_TYPES[ASSET_TYPES.length - 1]
 }
 
-const METAL_TYPES = ['gold', 'silver']
-const EMPTY_FORM  = { name: '', type: 'other', value: '', quantityTola: '', rateMode: 'auto' }
+const METAL_TYPES      = ['gold', 'silver']
+const COMMISSION_TYPES = ['gold', 'silver', 'stocks']
+const EMPTY_FORM       = { name: '', type: 'other', value: '', quantityTola: '', rateMode: 'auto', commissionPct: '' }
 
 export default function Assets() {
   const { assets, addAsset, updateAsset, deleteAsset, metalRates, refreshMetalRates } = useApp()
@@ -37,8 +38,9 @@ export default function Assets() {
   const [filterType, setFilterType] = useState('all')
 
   // ── Derived from form ──────────────────────────────────────
-  const isMetalType   = METAL_TYPES.includes(form.type)
-  const currentRate   = isMetalType ? metalRates?.[form.type]?.ratePerTola : null
+  const isMetalType        = METAL_TYPES.includes(form.type)
+  const isCommissionType   = COMMISSION_TYPES.includes(form.type)
+  const currentRate        = isMetalType ? metalRates?.[form.type]?.ratePerTola : null
   const estimatedValue =
     isMetalType && form.rateMode === 'auto' && form.quantityTola && currentRate
       ? Math.round(parseFloat(form.quantityTola) * currentRate)
@@ -66,11 +68,12 @@ export default function Assets() {
     setSelected(asset)
     const hasTola = asset.quantityTola != null && Number(asset.quantityTola) > 0
     setForm({
-      name:         asset.name,
-      type:         asset.type,
-      value:        String(asset.value),
-      quantityTola: hasTola ? String(asset.quantityTola) : '',
-      rateMode:     hasTola ? (asset.rateMode || 'auto') : 'manual',
+      name:          asset.name,
+      type:          asset.type,
+      value:         String(asset.value),
+      quantityTola:  hasTola ? String(asset.quantityTola) : '',
+      rateMode:      hasTola ? (asset.rateMode || 'auto') : 'manual',
+      commissionPct: asset.commissionPct != null ? String(asset.commissionPct) : '',
     })
     setError('')
     setModal('edit')
@@ -94,6 +97,10 @@ export default function Assets() {
   async function handleSave() {
     if (!form.name.trim()) return setError('Name is required.')
 
+    const commissionPct = form.commissionPct !== '' ? parseFloat(form.commissionPct) : null
+    if (commissionPct !== null && (isNaN(commissionPct) || commissionPct < 0 || commissionPct > 100))
+      return setError('Commission must be between 0 and 100.')
+
     let payload
 
     if (isMetalType) {
@@ -105,11 +112,12 @@ export default function Assets() {
         if (!currentRate)
           return setError('No rate available yet. Click "Refresh Rates" first, or switch to Manual mode.')
         payload = {
-          name:         form.name.trim(),
-          type:         form.type,
-          value:        Math.round(qty * currentRate),
-          quantityTola: qty,
-          rateMode:     'auto',
+          name:          form.name.trim(),
+          type:          form.type,
+          value:         Math.round(qty * currentRate),
+          quantityTola:  qty,
+          rateMode:      'auto',
+          commissionPct,
         }
       } else {
         // manual mode
@@ -117,18 +125,19 @@ export default function Assets() {
         if (!form.value || isNaN(val) || val < 0)
           return setError('Enter a valid value.')
         payload = {
-          name:         form.name.trim(),
-          type:         form.type,
-          value:        val,
-          quantityTola: !isNaN(qty) && qty > 0 ? qty : null,
-          rateMode:     'manual',
+          name:          form.name.trim(),
+          type:          form.type,
+          value:         val,
+          quantityTola:  !isNaN(qty) && qty > 0 ? qty : null,
+          rateMode:      'manual',
+          commissionPct,
         }
       }
     } else {
       const val = parseFloat(form.value)
       if (!form.value || isNaN(val) || val < 0)
         return setError('Enter a valid value (0 or more).')
-      payload = { name: form.name.trim(), type: form.type, value: val }
+      payload = { name: form.name.trim(), type: form.type, value: val, commissionPct }
     }
 
     setBusy(true)
@@ -371,6 +380,16 @@ export default function Assets() {
                               : ''}
                           </p>
                         )}
+                        {COMMISSION_TYPES.includes(asset.type) && asset.commissionPct != null && (
+                          <div className="mt-1.5 flex items-center justify-between bg-emerald-50 rounded-lg px-2.5 py-1.5">
+                            <span className="text-xs text-emerald-700">
+                              After {asset.commissionPct}% commission
+                            </span>
+                            <span className="text-sm font-bold text-emerald-700">
+                              {formatCurrency(Math.round(asset.value * (1 - asset.commissionPct / 100)))}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-center gap-2 mt-1.5">
                           <div className="flex-1 bg-gray-100 rounded-full h-1.5">
                             <div
@@ -579,6 +598,26 @@ export default function Assets() {
                 onChange={e => set('value', e.target.value)}
               />
               <p className="text-xs text-gray-400 mt-1">Enter the current estimated value at today's price.</p>
+            </div>
+          )}
+
+          {/* Commission % — only for metals and stocks */}
+          {isCommissionType && (
+            <div>
+              <label className="label">Commission / Broker Fee (%)</label>
+              <input
+                type="number"
+                placeholder="e.g. 1.5"
+                min="0"
+                max="100"
+                step="0.01"
+                className="input-field"
+                value={form.commissionPct}
+                onChange={e => set('commissionPct', e.target.value)}
+              />
+              <p className="text-xs text-gray-400 mt-1">
+                Leave blank if no commission. Used to show net receivable value.
+              </p>
             </div>
           )}
 
