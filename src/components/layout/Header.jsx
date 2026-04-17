@@ -4,13 +4,16 @@ import { useApp } from '../../context/AppContext'
 import { format } from 'date-fns'
 
 const PAGE_TITLES = {
-  '/':             { title: 'Dashboard',   sub: 'Your financial overview' },
+  '/':             { title: 'Dashboard',    sub: 'Your financial overview' },
   '/transactions': { title: 'Transactions', sub: 'Track income & expenses' },
-  '/accounts':     { title: 'Accounts',    sub: 'Manage your accounts' },
-  '/goals':        { title: 'Goals',       sub: 'Track your financial targets' },
-  '/budget':       { title: 'Budget',      sub: 'Monthly budget planner' },
-  '/analytics':    { title: 'Analytics',   sub: 'Spending insights & trends' },
-  '/ai-planner':   { title: 'AI Planner',  sub: 'Personalized financial advice' },
+  '/accounts':     { title: 'Accounts',     sub: 'Manage your accounts' },
+  '/assets':       { title: 'Assets',       sub: 'Track your assets' },
+  '/liabilities':  { title: 'Liabilities',  sub: 'Manage your debts' },
+  '/goals':        { title: 'Goals',        sub: 'Track your financial targets' },
+  '/budget':       { title: 'Budget',       sub: 'Monthly budget planner' },
+  '/analytics':    { title: 'Analytics',    sub: 'Spending insights & trends' },
+  '/ai-planner':   { title: 'AI Planner',   sub: 'Personalized financial advice' },
+  '/categories':   { title: 'Categories',   sub: 'Manage transaction categories' },
 }
 
 export default function Header({ onMenuClick }) {

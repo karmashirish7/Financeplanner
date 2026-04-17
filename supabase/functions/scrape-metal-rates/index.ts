@@ -18,7 +18,18 @@ const SUPABASE_URL  = Deno.env.get('SUPABASE_URL')!
 const SERVICE_KEY   = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 const FENEGOSIDA    = 'https://www.fenegosida.org/'
 
-Deno.serve(async (_req) => {
+const CORS = {
+  'Access-Control-Allow-Origin':  '*',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+Deno.serve(async (req) => {
+  // Handle CORS preflight
+  if (req.method === 'OPTIONS') {
+    return new Response('ok', { headers: CORS })
+  }
+
   const supabase = createClient(SUPABASE_URL, SERVICE_KEY)
 
   try {
@@ -97,9 +108,9 @@ Deno.serve(async (_req) => {
       }
     }
 
-    return Response.json({ success: true, goldRate, silverRate, date: today })
+    return Response.json({ success: true, goldRate, silverRate, date: today }, { headers: CORS })
   } catch (err: any) {
     console.error('[scrape-metal-rates]', err)
-    return Response.json({ error: err.message }, { status: 500 })
+    return Response.json({ error: err.message }, { status: 500, headers: CORS })
   }
 })

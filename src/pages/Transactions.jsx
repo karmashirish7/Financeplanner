@@ -53,7 +53,7 @@ export default function Transactions() {
   return (
     <div className="space-y-4">
       {/* Summary row */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
         <div className="card p-4 flex items-center gap-3">
           <div className="w-9 h-9 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0">
             <HiArrowTrendingUp className="w-5 h-5 text-emerald-600" />
@@ -136,9 +136,12 @@ export default function Transactions() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-gray-100 bg-gray-50">
-                  {['Date','Category','Account','Notes','Amount',''].map(h => (
-                    <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500">{h}</th>
-                  ))}
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Date</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Category</th>
+                  <th className="hidden sm:table-cell px-4 py-3 text-left text-xs font-semibold text-gray-500">Account</th>
+                  <th className="hidden md:table-cell px-4 py-3 text-left text-xs font-semibold text-gray-500">Notes</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">Amount</th>
+                  <th className="px-4 py-3" />
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-50">
@@ -151,12 +154,12 @@ export default function Transactions() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           <span className="text-base">{cat?.icon || '💳'}</span>
-                          <span className="font-medium text-gray-900">{cat?.name || '—'}</span>
-                          {t.isRecurring && <span className="badge bg-indigo-50 text-indigo-600">↻</span>}
+                          <span className="font-medium text-gray-900 truncate max-w-[90px] sm:max-w-none">{cat?.name || '—'}</span>
+                          {t.isRecurring && <span className="hidden sm:inline badge bg-indigo-50 text-indigo-600">↻</span>}
                         </div>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{acc?.name || '—'}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs max-w-[160px] truncate">{t.notes || '—'}</td>
+                      <td className="hidden sm:table-cell px-4 py-3 text-gray-500 text-xs">{acc?.name || '—'}</td>
+                      <td className="hidden md:table-cell px-4 py-3 text-gray-500 text-xs max-w-[160px] truncate">{t.notes || '—'}</td>
                       <td className="px-4 py-3 font-semibold whitespace-nowrap">
                         <span className={t.type === 'income' ? 'text-emerald-600' : 'text-gray-900'}>
                           {t.type === 'income' ? '+' : '-'}{formatCurrency(t.amount)}

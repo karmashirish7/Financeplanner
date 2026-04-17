@@ -53,7 +53,7 @@ export default function Goals() {
   return (
     <div className="space-y-5">
       {/* Summary */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-3 sm:gap-4">
         <div className="card p-4">
           <p className="text-xs text-gray-500 mb-1">Total Goals</p>
           <p className="text-2xl font-bold text-gray-900">{goals.length}</p>

@@ -3,6 +3,30 @@ import { subMonths } from 'date-fns'
 import { supabase, db } from '../services/supabase'
 import { isInMonth } from '../utils/formatters'
 
+// ─── Default categories seeded for every new user ────────────────────────────
+const DEFAULT_CATEGORIES = [
+  // Income
+  { name: 'Salary',        type: 'income',  color: '#10b981', icon: '💰' },
+  { name: 'Freelance',     type: 'income',  color: '#6366f1', icon: '💻' },
+  { name: 'Interest',      type: 'income',  color: '#f59e0b', icon: '🏦' },
+  { name: 'Investment',    type: 'income',  color: '#06b6d4', icon: '📈' },
+  { name: 'Bonus',         type: 'income',  color: '#8b5cf6', icon: '🎁' },
+  { name: 'Rental Income', type: 'income',  color: '#ec4899', icon: '🏠' },
+  // Expense
+  { name: 'Food & Dining', type: 'expense', color: '#ef4444', icon: '🍽️' },
+  { name: 'Rent',          type: 'expense', color: '#f97316', icon: '🏠' },
+  { name: 'Transport',     type: 'expense', color: '#eab308', icon: '🚗' },
+  { name: 'Utilities',     type: 'expense', color: '#84cc16', icon: '⚡' },
+  { name: 'Shopping',      type: 'expense', color: '#06b6d4', icon: '🛒' },
+  { name: 'Entertainment', type: 'expense', color: '#8b5cf6', icon: '🎬' },
+  { name: 'Health',        type: 'expense', color: '#ec4899', icon: '🏥' },
+  { name: 'Education',     type: 'expense', color: '#f59e0b', icon: '📚' },
+  { name: 'Personal Care', type: 'expense', color: '#10b981', icon: '💆' },
+  { name: 'Travel',        type: 'expense', color: '#6366f1', icon: '✈️' },
+  { name: 'Gifts',         type: 'expense', color: '#e11d48', icon: '🎁' },
+  { name: 'Home',          type: 'expense', color: '#78716c', icon: '🔧' },
+]
+
 // ─── Demo data builder (uses real category/account IDs from DB) ───────────────
 async function insertDemoData(userId) {
   // 1. Fetch seeded categories
@@ -133,7 +157,7 @@ export function AppProvider({ children }) {
   const fetchAll = useCallback(async (uid) => {
     setDataLoading(true)
     const [cats, accs, txns, assets, goals, budgets, liabilities, rates] = await Promise.all([
-      supabase.from('categories').select('*').eq('user_id', uid).order('name'),
+      supabase.from('categories').select('*').eq('user_id', uid).order('type').order('name'),
       supabase.from('accounts').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('transactions').select('*').eq('user_id', uid).order('date', { ascending: false }),
       supabase.from('assets').select('*').eq('user_id', uid).order('created_at'),
@@ -154,8 +178,18 @@ export function AppProvider({ children }) {
     }
     setMetalRates(ratesObj)
 
+    // Seed default categories for brand-new users
+    let catRows = cats.data || []
+    if (catRows.length === 0) {
+      const { data: seeded } = await supabase
+        .from('categories')
+        .insert(DEFAULT_CATEGORIES.map(c => db.fromCategory(c, uid)))
+        .select()
+      catRows = seeded || []
+    }
+
     setData({
-      categories:   (cats.data        || []).map(db.toCategory),
+      categories:   catRows.map(db.toCategory),
       accounts:     (accs.data        || []).map(db.toAccount),
       transactions: (txns.data        || []).map(db.toTransaction),
       assets:       (assets.data      || []).map(db.toAsset),
