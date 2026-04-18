@@ -1,9 +1,10 @@
-import { useState } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { useApp } from '../context/AppContext'
 import Modal from '../components/ui/Modal'
 import { formatCurrency, formatDate } from '../utils/formatters'
-import { HiPlus, HiPencil, HiTrash, HiChartPie, HiArrowPath, HiArrowTrendingUp, HiArrowTrendingDown } from 'react-icons/hi2'
+import { HiPlus, HiPencil, HiTrash, HiChartPie, HiArrowPath, HiArrowTrendingUp, HiArrowTrendingDown, HiMagnifyingGlass } from 'react-icons/hi2'
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts'
+import { NEPSE_STOCKS } from '../data/nepseStocks'
 
 export const ASSET_TYPES = [
   { value: 'gold',       label: 'Gold',            icon: '🥇', color: '#f59e0b', group: 'metal' },
@@ -42,6 +43,88 @@ function pnlColor(pnl) {
 }
 function pnlBg(pnl) {
   return pnl > 0 ? 'bg-emerald-50' : pnl < 0 ? 'bg-red-50' : 'bg-gray-50'
+}
+
+function StockPicker({ value, onChange, onSelect }) {
+  const [query,    setQuery]    = useState('')
+  const [open,     setOpen]     = useState(false)
+  const wrapRef = useRef(null)
+
+  const results = query.trim().length < 1 ? [] : NEPSE_STOCKS.filter(s => {
+    const q = query.toLowerCase()
+    return s.symbol.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
+  }).slice(0, 10)
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    function handler(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  function pick(stock) {
+    onSelect(stock)
+    setQuery('')
+    setOpen(false)
+  }
+
+  return (
+    <div ref={wrapRef} className="space-y-2">
+      {/* Search box */}
+      <div>
+        <label className="label">Stock Name / Symbol</label>
+        <div className="relative">
+          <HiMagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Search NEPSE — e.g. NABIL, Kumari, Hydro…"
+            className="input-field pl-9"
+            value={query}
+            onChange={e => { setQuery(e.target.value); setOpen(true) }}
+            onFocus={() => query && setOpen(true)}
+          />
+        </div>
+        {open && results.length > 0 && (
+          <div className="mt-1 border border-gray-200 rounded-xl shadow-lg bg-white overflow-hidden z-10 relative">
+            {results.map(s => (
+              <button
+                key={s.symbol}
+                type="button"
+                onMouseDown={() => pick(s)}
+                className="w-full flex items-center justify-between px-3 py-2.5 hover:bg-indigo-50 transition-colors text-left border-b border-gray-50 last:border-0"
+              >
+                <div>
+                  <span className="text-sm font-bold text-gray-900">{s.symbol}</span>
+                  <span className="text-xs text-gray-400 ml-2 truncate">{s.name}</span>
+                </div>
+                <span className="text-xs font-semibold text-indigo-600 flex-shrink-0 ml-2">
+                  {formatCurrency(s.lastPrice)}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
+        {open && query.trim().length >= 1 && results.length === 0 && (
+          <p className="mt-1 text-xs text-gray-400 px-1">No matching NEPSE stock found.</p>
+        )}
+      </div>
+
+      {/* Selected / manual name field */}
+      <div>
+        <label className="label">Stock Name (editable)</label>
+        <input
+          type="text"
+          placeholder="e.g. NABIL or type manually"
+          className="input-field"
+          value={value}
+          onChange={e => onChange(e.target.value)}
+        />
+        <p className="text-xs text-gray-400 mt-1">Search above to pick from NEPSE list, or type any name.</p>
+      </div>
+    </div>
+  )
 }
 
 export default function Assets() {
@@ -681,21 +764,32 @@ export default function Assets() {
         size="md"
       >
         <div className="space-y-4">
-          {/* Name */}
-          <div>
-            <label className="label">Name</label>
-            <input
-              type="text"
-              placeholder={
-                isMetalType ? 'e.g. My Gold, Inherited Silver'
-                : isStockType ? 'e.g. NABIL, Sunrise Bank, SBI'
-                : 'e.g. Pokhara Land, Honda Activa'
-              }
-              className="input-field"
+          {/* Name — stock tab shows NEPSE picker */}
+          {isStockType ? (
+            <StockPicker
               value={form.name}
-              onChange={e => set('name', e.target.value)}
+              onChange={name => set('name', name)}
+              onSelect={(stock) => {
+                setForm(f => ({
+                  ...f,
+                  name: stock.symbol,
+                  currentPricePerShare: String(stock.lastPrice),
+                }))
+                setError('')
+              }}
             />
-          </div>
+          ) : (
+            <div>
+              <label className="label">Name</label>
+              <input
+                type="text"
+                placeholder={isMetalType ? 'e.g. My Gold, Inherited Silver' : 'e.g. Pokhara Land, Honda Activa'}
+                className="input-field"
+                value={form.name}
+                onChange={e => set('name', e.target.value)}
+              />
+            </div>
+          )}
 
           {/* Type selector — filtered by current tab */}
           {!isStockType && (
