@@ -147,6 +147,59 @@ export const db = {
     updated_at: new Date().toISOString(),
   }),
 
+  // ── EMI Plans ─────────────────────────────────────────────────────────────
+  toEmiPlan: (r) => ({
+    id:          r.id,
+    name:        r.name,
+    type:        r.type,
+    referenceId: r.reference_id,
+    accountId:   r.account_id || null,
+    amount:      Number(r.amount),
+    frequency:   r.frequency || 'monthly',
+    dayOfMonth:  r.day_of_month ?? null,
+    startDate:   r.start_date,
+    isActive:    r.is_active !== false,
+    notes:       r.notes || '',
+    createdAt:   r.created_at,
+  }),
+  fromEmiPlan: (d, userId) => ({
+    user_id:      userId,
+    name:         d.name,
+    type:         d.type,
+    reference_id: d.referenceId,
+    account_id:   d.accountId || null,
+    amount:       d.amount,
+    frequency:    d.frequency || 'monthly',
+    day_of_month: d.dayOfMonth || null,
+    start_date:   d.startDate,
+    is_active:    d.isActive !== false,
+    notes:        d.notes || null,
+  }),
+
+  // ── EMI Payments ──────────────────────────────────────────────────────────
+  toEmiPayment: (r) => ({
+    id:            r.id,
+    planId:        r.plan_id,
+    periodKey:     r.period_key,
+    dueDate:       r.due_date,
+    amount:        Number(r.amount),
+    status:        r.status,
+    paidAt:        r.paid_at || null,
+    transactionId: r.transaction_id || null,
+    notes:         r.notes || '',
+  }),
+  fromEmiPayment: (d, userId) => ({
+    user_id:        userId,
+    plan_id:        d.planId,
+    period_key:     d.periodKey,
+    due_date:       d.dueDate,
+    amount:         d.amount,
+    status:         d.status || 'pending',
+    paid_at:        d.paidAt || null,
+    transaction_id: d.transactionId || null,
+    notes:          d.notes || null,
+  }),
+
   // ── Budgets ───────────────────────────────────────────────
   toBudget: (r) => ({
     id: r.id,

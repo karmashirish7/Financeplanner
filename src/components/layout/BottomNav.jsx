@@ -1,13 +1,13 @@
 import { NavLink } from 'react-router-dom'
 import {
   HiHome, HiArrowsRightLeft, HiBuildingLibrary,
-  HiCalculator, HiBars3,
+  HiCalculator, HiBars3, HiCalendarDays,
 } from 'react-icons/hi2'
 
 const ITEMS = [
   { to: '/',             label: 'Home',    icon: HiHome,            end: true  },
   { to: '/transactions', label: 'Txns',    icon: HiArrowsRightLeft, end: false },
-  { to: '/accounts',     label: 'Accounts',icon: HiBuildingLibrary, end: false },
+  { to: '/emi',          label: 'EMI',     icon: HiCalendarDays,    end: false },
   { to: '/budget',       label: 'Budget',  icon: HiCalculator,      end: false },
 ]
 

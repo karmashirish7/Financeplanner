@@ -144,6 +144,8 @@ const EMPTY = {
   goals:        [],
   budgets:      [],
   liabilities:  [],
+  emiPlans:     [],
+  emiPayments:  [],
 }
 
 export function AppProvider({ children }) {
@@ -158,7 +160,7 @@ export function AppProvider({ children }) {
   const fetchAll = useCallback(async (uid) => {
     console.log('[fetchAll] called for uid:', uid)
     setDataLoading(true)
-    const [cats, accs, txns, assets, goals, budgets, liabilities, rates] = await Promise.all([
+    const [cats, accs, txns, assets, goals, budgets, liabilities, rates, emiPlans, emiPayments] = await Promise.all([
       supabase.from('categories').select('*').eq('user_id', uid).order('type').order('name'),
       supabase.from('accounts').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('transactions').select('*').eq('user_id', uid).order('date', { ascending: false }),
@@ -167,6 +169,8 @@ export function AppProvider({ children }) {
       supabase.from('budgets').select('*').eq('user_id', uid),
       supabase.from('liabilities').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('precious_metal_rates').select('*').order('date', { ascending: false }).limit(4),
+      supabase.from('emi_plans').select('*').eq('user_id', uid).order('created_at'),
+      supabase.from('emi_payments').select('*').eq('user_id', uid).order('due_date', { ascending: false }),
     ])
 
     // Build { gold: latestRate, silver: latestRate }
@@ -197,15 +201,19 @@ export function AppProvider({ children }) {
     if (goals.error)        console.error('[fetchAll] goals:', goals.error)
     if (budgets.error)      console.error('[fetchAll] budgets:', budgets.error)
     if (liabilities.error)  console.error('[fetchAll] liabilities:', liabilities.error)
+    if (emiPlans.error)     console.error('[fetchAll] emiPlans:', emiPlans.error)
+    if (emiPayments.error)  console.error('[fetchAll] emiPayments:', emiPayments.error)
 
     setData({
       categories:   catRows.map(db.toCategory),
-      accounts:     (accs.data        || []).map(db.toAccount),
-      transactions: (txns.data        || []).map(db.toTransaction),
-      assets:       (assets.data      || []).map(db.toAsset),
-      goals:        (goals.data       || []).map(db.toGoal),
-      budgets:      (budgets.data     || []).map(db.toBudget),
-      liabilities:  (liabilities.data || []).map(db.toLiability),
+      accounts:     (accs.data         || []).map(db.toAccount),
+      transactions: (txns.data         || []).map(db.toTransaction),
+      assets:       (assets.data       || []).map(db.toAsset),
+      goals:        (goals.data        || []).map(db.toGoal),
+      budgets:      (budgets.data      || []).map(db.toBudget),
+      liabilities:  (liabilities.data  || []).map(db.toLiability),
+      emiPlans:     (emiPlans.data     || []).map(db.toEmiPlan),
+      emiPayments:  (emiPayments.data  || []).map(db.toEmiPayment),
     })
     setDataLoading(false)
   }, [])
@@ -549,6 +557,131 @@ export function AppProvider({ children }) {
       setData(s => ({ ...s, liabilities: s.liabilities.filter(l => l.id !== id) }))
     },
 
+    // ── EMI Plans ─────────────────────────────────────────────────────────
+    async addEmiPlan(d) {
+      const { data: row, error } = await supabase.from('emi_plans').insert(db.fromEmiPlan(d, user.id)).select().single()
+      if (error) throw error
+      setData(s => ({ ...s, emiPlans: [...s.emiPlans, db.toEmiPlan(row)] }))
+    },
+    async updateEmiPlan(d) {
+      const { error } = await supabase.from('emi_plans').update(db.fromEmiPlan(d, user.id)).eq('id', d.id)
+      if (error) throw error
+      setData(s => ({ ...s, emiPlans: s.emiPlans.map(p => p.id === d.id ? { ...db.fromEmiPlan(d, user.id), id: d.id } : p) }))
+    },
+    async deleteEmiPlan(id) {
+      const { error } = await supabase.from('emi_plans').delete().eq('id', id)
+      if (error) throw error
+      setData(s => ({
+        ...s,
+        emiPlans:    s.emiPlans.filter(p => p.id !== id),
+        emiPayments: s.emiPayments.filter(p => p.planId !== id),
+      }))
+    },
+    async payEmiPayment({ plan, periodKey, dueDate, amount, accountId, categoryId }) {
+      if (!user) return
+      const today = new Date().toISOString().split('T')[0]
+
+      // 1. Create expense transaction (deducts from account via RPC)
+      const { data: txnRow, error: txnErr } = await supabase
+        .from('transactions')
+        .insert(db.fromTransaction({
+          type: 'expense', amount, accountId,
+          categoryId: categoryId || null,
+          date: today,
+          notes: `${plan.name} · ${periodKey}`,
+          isRecurring: true,
+        }, user.id))
+        .select().single()
+      if (txnErr) throw txnErr
+
+      const { error: balErr } = await supabase.rpc('adjust_account_balance', {
+        p_account_id: accountId,
+        p_delta: -amount,
+      })
+      if (balErr) throw balErr
+
+      // 2. Update linked liability or goal
+      let liabUpdate = null, goalUpdate = null
+      if (plan.type === 'liability') {
+        const liability = data.liabilities.find(l => l.id === plan.referenceId)
+        if (liability) {
+          const newBalance = Math.max(0, liability.balance - amount)
+          const { error } = await supabase.from('liabilities')
+            .update({ balance: newBalance, updated_at: new Date().toISOString() })
+            .eq('id', liability.id)
+          if (error) throw error
+          liabUpdate = { id: liability.id, newBalance }
+        }
+      } else if (plan.type === 'goal') {
+        const goal = data.goals.find(g => g.id === plan.referenceId)
+        if (goal) {
+          const newAmount = goal.currentAmount + amount
+          const { error } = await supabase.from('goals')
+            .update({ current_amount: newAmount })
+            .eq('id', goal.id)
+          if (error) throw error
+          goalUpdate = { id: goal.id, newAmount }
+        }
+      }
+
+      // 3. Record payment (upsert in case of re-pay)
+      const { data: pmtRow, error: pmtErr } = await supabase
+        .from('emi_payments')
+        .upsert({
+          user_id:        user.id,
+          plan_id:        plan.id,
+          period_key:     periodKey,
+          due_date:       dueDate,
+          amount,
+          status:         'paid',
+          paid_at:        new Date().toISOString(),
+          transaction_id: txnRow.id,
+        }, { onConflict: 'plan_id,period_key' })
+        .select().single()
+      if (pmtErr) throw pmtErr
+
+      // 4. Batch state update
+      setData(s => ({
+        ...s,
+        transactions: [db.toTransaction(txnRow), ...s.transactions],
+        accounts:     s.accounts.map(a =>
+          a.id === accountId ? { ...a, balance: a.balance - amount } : a
+        ),
+        liabilities: liabUpdate
+          ? s.liabilities.map(l => l.id === liabUpdate.id ? { ...l, balance: liabUpdate.newBalance } : l)
+          : s.liabilities,
+        goals: goalUpdate
+          ? s.goals.map(g => g.id === goalUpdate.id ? { ...g, currentAmount: goalUpdate.newAmount } : g)
+          : s.goals,
+        emiPayments: [
+          ...s.emiPayments.filter(p => !(p.planId === plan.id && p.periodKey === periodKey)),
+          db.toEmiPayment(pmtRow),
+        ],
+      }))
+    },
+    async skipEmiPayment({ plan, periodKey, dueDate }) {
+      if (!user) return
+      const { data: pmtRow, error } = await supabase
+        .from('emi_payments')
+        .upsert({
+          user_id:    user.id,
+          plan_id:    plan.id,
+          period_key: periodKey,
+          due_date:   dueDate,
+          amount:     plan.amount,
+          status:     'skipped',
+        }, { onConflict: 'plan_id,period_key' })
+        .select().single()
+      if (error) throw error
+      setData(s => ({
+        ...s,
+        emiPayments: [
+          ...s.emiPayments.filter(p => !(p.planId === plan.id && p.periodKey === periodKey)),
+          db.toEmiPayment(pmtRow),
+        ],
+      }))
+    },
+
     // ── Budgets ────────────────────────────────────────────────────────────
     async setBudget(d) {
       const row = db.fromBudget(d, user.id)
@@ -581,7 +714,7 @@ export function AppProvider({ children }) {
     user,
     authLoading,
     dataLoading,
-    // Data
+    // Data (includes emiPlans and emiPayments via spread)
     ...data,
     // Metal rates (shared, not per-user)
     metalRates,
