@@ -123,7 +123,7 @@ export default function Accounts() {
       </div>
 
       {/* Modal */}
-      <Modal isOpen={modal} onClose={close} title={editing ? 'Edit Account' : 'Add Account'}>
+      <Modal isOpen={modal} onClose={close} title={editing ? 'Edit Account' : 'Add Account'} disableBackdropClose={saving || !!error}>
         <form onSubmit={handleSubmit} className="space-y-4">
           {error && (
             <p className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{error}</p>

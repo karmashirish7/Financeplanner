@@ -189,6 +189,13 @@ export function AppProvider({ children }) {
       catRows = seeded || []
     }
 
+    if (accs.error)         console.error('[fetchAll] accounts:', accs.error)
+    if (txns.error)         console.error('[fetchAll] transactions:', txns.error)
+    if (assets.error)       console.error('[fetchAll] assets:', assets.error)
+    if (goals.error)        console.error('[fetchAll] goals:', goals.error)
+    if (budgets.error)      console.error('[fetchAll] budgets:', budgets.error)
+    if (liabilities.error)  console.error('[fetchAll] liabilities:', liabilities.error)
+
     setData({
       categories:   catRows.map(db.toCategory),
       accounts:     (accs.data        || []).map(db.toAccount),

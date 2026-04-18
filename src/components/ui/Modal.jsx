@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { HiXMark } from 'react-icons/hi2'
 
-export default function Modal({ isOpen, onClose, title, children, size = 'md' }) {
+export default function Modal({ isOpen, onClose, title, children, size = 'md', disableBackdropClose = false }) {
   // Close on Escape
   useEffect(() => {
     if (!isOpen) return
@@ -16,7 +16,7 @@ export default function Modal({ isOpen, onClose, title, children, size = 'md' })
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4">
-      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={disableBackdropClose ? undefined : onClose} />
       <div className={`relative bg-white rounded-t-2xl sm:rounded-2xl shadow-xl w-full ${sizes[size]} flex flex-col`}
            style={{ maxHeight: 'min(90vh, 100dvh - env(keyboard-inset-height, 0px) - 16px)' }}>
         {/* Header */}
