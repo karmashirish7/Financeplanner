@@ -156,6 +156,7 @@ export function AppProvider({ children }) {
 
   // ── Fetch all user data ──────────────────────────────────────────────────
   const fetchAll = useCallback(async (uid) => {
+    console.log('[fetchAll] called for uid:', uid)
     setDataLoading(true)
     const [cats, accs, txns, assets, goals, budgets, liabilities, rates] = await Promise.all([
       supabase.from('categories').select('*').eq('user_id', uid).order('type').order('name'),
@@ -189,6 +190,7 @@ export function AppProvider({ children }) {
       catRows = seeded || []
     }
 
+    console.log('[fetchAll] accounts returned:', accs.data?.length ?? 'error', accs.error || '')
     if (accs.error)         console.error('[fetchAll] accounts:', accs.error)
     if (txns.error)         console.error('[fetchAll] transactions:', txns.error)
     if (assets.error)       console.error('[fetchAll] assets:', assets.error)
@@ -232,6 +234,7 @@ export function AppProvider({ children }) {
           fetchAll(u.id)
         }
       } else {
+        console.warn('[Auth] session lost, event:', event)
         dataLoadedRef.current = false
         setData(EMPTY)
       }
@@ -371,7 +374,10 @@ export function AppProvider({ children }) {
 
     // ── Accounts ───────────────────────────────────────────────────────────
     async addAccount(d) {
-      const { data: row, error } = await supabase.from('accounts').insert(db.fromAccount(d, user.id)).select().single()
+      const payload = db.fromAccount(d, user.id)
+      console.log('[addAccount] inserting:', payload)
+      const { data: row, error } = await supabase.from('accounts').insert(payload).select().single()
+      console.log('[addAccount] result:', { row, error })
       if (error) throw error
       setData(s => ({ ...s, accounts: [...s.accounts, db.toAccount(row)] }))
     },
