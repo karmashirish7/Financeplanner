@@ -129,6 +129,8 @@ export const db = {
     minimumPayment: r.minimum_payment != null ? Number(r.minimum_payment) : null,
     dueDay: r.due_day ?? null,
     color: r.color,
+    priority: r.priority || 'medium',
+    deadline: r.deadline || null,
     updatedAt: r.updated_at,
   }),
   fromLiability: (d, userId) => ({
@@ -140,6 +142,8 @@ export const db = {
     minimum_payment: d.minimumPayment ?? null,
     due_day: d.dueDay ?? null,
     color: d.color,
+    priority: d.priority || 'medium',
+    deadline: d.deadline || null,
     updated_at: new Date().toISOString(),
   }),
 
