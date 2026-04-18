@@ -242,17 +242,20 @@ export default function Assets() {
 
     if (isMetalType) {
       const qty = form.quantityTola ? parseFloat(form.quantityTola) : NaN
+      const buyPricePerTola = form.purchasePrice !== '' ? parseFloat(form.purchasePrice) : null
+      if (buyPricePerTola !== null && (isNaN(buyPricePerTola) || buyPricePerTola < 0))
+        return setError('Enter a valid purchase price per tola.')
       if (form.rateMode === 'auto') {
         if (!form.quantityTola || isNaN(qty) || qty <= 0)
           return setError('Enter a valid quantity in tola.')
         if (!currentRate)
           return setError('No rate available. Click "Refresh Rates" first, or switch to Manual mode.')
-        payload = { name: form.name.trim(), type: form.type, value: Math.round(qty * currentRate), quantityTola: qty, rateMode: 'auto', commissionPct }
+        payload = { name: form.name.trim(), type: form.type, value: Math.round(qty * currentRate), quantityTola: qty, rateMode: 'auto', commissionPct, purchasePrice: buyPricePerTola }
       } else {
         const val = parseFloat(form.value)
         if (!form.value || isNaN(val) || val < 0)
           return setError('Enter a valid value.')
-        payload = { name: form.name.trim(), type: form.type, value: val, quantityTola: !isNaN(qty) && qty > 0 ? qty : null, rateMode: 'manual', commissionPct }
+        payload = { name: form.name.trim(), type: form.type, value: val, quantityTola: !isNaN(qty) && qty > 0 ? qty : null, rateMode: 'manual', commissionPct, purchasePrice: buyPricePerTola }
       }
     } else if (isStockType) {
       const shares = parseFloat(form.shares)
@@ -430,6 +433,10 @@ export default function Assets() {
                 const hasTola = asset.quantityTola != null && asset.quantityTola > 0
                 const liveRate = metalRates?.[asset.type]?.ratePerTola
                 const pct     = totalAssets > 0 ? (asset.value / totalAssets) * 100 : 0
+                const totalInvested = hasTola && asset.purchasePrice != null
+                  ? asset.quantityTola * asset.purchasePrice : null
+                const pnl = totalInvested != null ? asset.value - totalInvested : null
+                const pnlPct = totalInvested ? (pnl / totalInvested) * 100 : null
                 return (
                   <div key={asset.id} className="card p-4 flex flex-col gap-3">
                     <div className="flex items-start justify-between gap-2">
@@ -449,31 +456,65 @@ export default function Assets() {
                       </div>
                       <ActionBtns asset={asset} />
                     </div>
-                    <div>
-                      <p className="text-xl font-bold text-gray-900">{formatCurrency(asset.value)}</p>
-                      {hasTola && (
-                        <p className="text-xs text-gray-500 mt-0.5">
-                          {asset.quantityTola} tola
-                          {liveRate && asset.rateMode === 'auto'
-                            ? ` · ${formatCurrency(liveRate)}/tola`
-                            : asset.rateMode === 'manual' && asset.quantityTola
-                            ? ` · ${formatCurrency(Math.round(asset.value / asset.quantityTola))}/tola (manual)`
-                            : ''}
-                        </p>
-                      )}
-                      {asset.commissionPct != null && (
-                        <div className="mt-1.5 flex items-center justify-between bg-emerald-50 rounded-lg px-2.5 py-1.5">
-                          <span className="text-xs text-emerald-700">After {asset.commissionPct}% commission</span>
-                          <span className="text-sm font-bold text-emerald-700">{formatCurrency(Math.round(asset.value * (1 - asset.commissionPct / 100)))}</span>
+
+                    {totalInvested != null ? (
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-gray-50 rounded-lg px-3 py-2">
+                          <p className="text-[10px] text-gray-400 mb-0.5">Invested</p>
+                          <p className="text-sm font-bold text-gray-900">{formatCurrency(totalInvested)}</p>
+                          <p className="text-[10px] text-gray-400">{formatCurrency(asset.purchasePrice)}/tola</p>
                         </div>
-                      )}
-                      <div className="flex items-center gap-2 mt-1.5">
-                        <div className="flex-1 bg-gray-100 rounded-full h-1.5">
-                          <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: meta.color }} />
+                        <div className="bg-amber-50 rounded-lg px-3 py-2">
+                          <p className="text-[10px] text-gray-400 mb-0.5">Current</p>
+                          <p className="text-sm font-bold text-gray-900">{formatCurrency(asset.value)}</p>
+                          {hasTola && <p className="text-[10px] text-gray-400">{formatCurrency(Math.round(asset.value / asset.quantityTola))}/tola</p>}
                         </div>
-                        <span className="text-xs text-gray-400 flex-shrink-0">{pct.toFixed(1)}% of total</span>
                       </div>
+                    ) : (
+                      <div>
+                        <p className="text-xl font-bold text-gray-900">{formatCurrency(asset.value)}</p>
+                        {hasTola && (
+                          <p className="text-xs text-gray-500 mt-0.5">
+                            {asset.quantityTola} tola
+                            {liveRate && asset.rateMode === 'auto'
+                              ? ` · ${formatCurrency(liveRate)}/tola`
+                              : asset.rateMode === 'manual' && asset.quantityTola
+                              ? ` · ${formatCurrency(Math.round(asset.value / asset.quantityTola))}/tola (manual)`
+                              : ''}
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {pnl != null && (
+                      <div className={`rounded-lg px-3 py-2 flex items-center justify-between ${pnlBg(pnl)}`}>
+                        <div className="flex items-center gap-1.5">
+                          {pnl >= 0
+                            ? <HiArrowTrendingUp className={`w-4 h-4 ${pnlColor(pnl)}`} />
+                            : <HiArrowTrendingDown className={`w-4 h-4 ${pnlColor(pnl)}`} />}
+                          <span className={`text-xs font-medium ${pnlColor(pnl)}`}>{pnl >= 0 ? 'Gain' : 'Loss'}</span>
+                        </div>
+                        <div className="text-right">
+                          <p className={`text-sm font-bold ${pnlColor(pnl)}`}>{pnl >= 0 ? '+' : ''}{formatCurrency(Math.round(pnl))}</p>
+                          {pnlPct != null && <p className={`text-[10px] ${pnlColor(pnl)}`}>{pnl >= 0 ? '+' : ''}{pnlPct.toFixed(2)}%</p>}
+                        </div>
+                      </div>
+                    )}
+
+                    {asset.commissionPct != null && (
+                      <div className="flex items-center justify-between bg-emerald-50 rounded-lg px-2.5 py-1.5">
+                        <span className="text-xs text-emerald-700">After {asset.commissionPct}% commission</span>
+                        <span className="text-sm font-bold text-emerald-700">{formatCurrency(Math.round(asset.value * (1 - asset.commissionPct / 100)))}</span>
+                      </div>
+                    )}
+
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 bg-gray-100 rounded-full h-1.5">
+                        <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: meta.color }} />
+                      </div>
+                      <span className="text-xs text-gray-400 flex-shrink-0">{pct.toFixed(1)}% of total</span>
                     </div>
+
                     {asset.updatedAt && <p className="text-xs text-gray-400">Updated {formatDate(asset.updatedAt.split('T')[0])}</p>}
                   </div>
                 )
@@ -865,6 +906,36 @@ export default function Assets() {
                   <p className="text-xs text-gray-400 mt-1">Switch to Auto Rate to have fenegosida.org update it daily.</p>
                 </div>
               )}
+              <div>
+                <label className="label">Avg Buy Price / Tola (NPR) <span className="text-gray-400 font-normal">— optional</span></label>
+                <input type="number" placeholder="e.g. 145000" min="0" className="input-field"
+                  value={form.purchasePrice} onChange={e => set('purchasePrice', e.target.value)} />
+                <p className="text-xs text-gray-400 mt-1">What you paid per tola. Used to calculate profit / loss.</p>
+              </div>
+              {/* Metal P&L preview in form */}
+              {form.purchasePrice && parseFloat(form.purchasePrice) > 0 && form.quantityTola && parseFloat(form.quantityTola) > 0 && (() => {
+                const qty = parseFloat(form.quantityTola)
+                const buyPpt = parseFloat(form.purchasePrice)
+                const totalInvested = qty * buyPpt
+                const currentVal = form.rateMode === 'auto' && estimatedMetalValue != null
+                  ? estimatedMetalValue
+                  : form.value ? parseFloat(form.value) : null
+                if (!currentVal) return null
+                const pnl = currentVal - totalInvested
+                const pct = (pnl / totalInvested) * 100
+                return (
+                  <div className={`rounded-xl p-3 ${pnlBg(pnl)}`}>
+                    <div className="flex justify-between text-xs mb-1">
+                      <span className={`font-medium ${pnlColor(pnl)}`}>Invested ({qty} tola × {formatCurrency(buyPpt)})</span>
+                      <span className={`font-bold ${pnlColor(pnl)}`}>{formatCurrency(totalInvested)}</span>
+                    </div>
+                    <div className={`flex justify-between text-sm font-bold ${pnlColor(pnl)}`}>
+                      <span>{pnl >= 0 ? 'Gain' : 'Loss'}</span>
+                      <span>{pnl >= 0 ? '+' : ''}{formatCurrency(Math.round(pnl))} ({pnl >= 0 ? '+' : ''}{pct.toFixed(2)}%)</span>
+                    </div>
+                  </div>
+                )
+              })()}
               <div>
                 <label className="label">Commission / Broker Fee (%)</label>
                 <input type="number" placeholder="e.g. 1.5" min="0" max="100" step="0.01" className="input-field"
