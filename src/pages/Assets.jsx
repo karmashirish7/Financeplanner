@@ -30,6 +30,7 @@ const EMPTY_FORM = {
   name: '', type: 'other', value: '',
   quantityTola: '', rateMode: 'auto', commissionPct: '',
   purchasePrice: '', shares: '', pricePerShare: '', currentPricePerShare: '',
+  purchaseDate: '',
 }
 
 const TABS = [
@@ -43,6 +44,28 @@ function pnlColor(pnl) {
 }
 function pnlBg(pnl) {
   return pnl > 0 ? 'bg-emerald-50' : pnl < 0 ? 'bg-red-50' : 'bg-gray-50'
+}
+
+function calcBrokerage(value) {
+  if (value <= 2500)     return 10
+  if (value <= 50000)    return Math.round(value * 0.0036)
+  if (value <= 500000)   return Math.round(value * 0.0033)
+  if (value <= 2000000)  return Math.round(value * 0.0031)
+  if (value <= 10000000) return Math.round(value * 0.0027)
+  return Math.round(value * 0.0024)
+}
+
+function calcNepseReceivable(saleValue, investedValue, purchaseDate) {
+  const brokerage = calcBrokerage(saleValue)
+  const sebon = Math.round(saleValue * 0.00015)
+  const dp = 25
+  const profit = saleValue - investedValue
+  const isLongTerm = purchaseDate
+    ? (Date.now() - new Date(purchaseDate).getTime()) >= 365 * 24 * 3600 * 1000
+    : false
+  const cgt = profit > 0 ? Math.round(profit * (isLongTerm ? 0.05 : 0.075)) : 0
+  const receivable = saleValue - brokerage - sebon - dp - cgt
+  return { brokerage, sebon, dp, cgt, receivable, profit, isLongTerm }
 }
 
 function StockPicker({ value, onChange, onSelect }) {
@@ -210,6 +233,7 @@ export default function Assets() {
       f.pricePerShare        = asset.purchasePrice != null ? String(asset.purchasePrice) : ''
       f.currentPricePerShare = hasTola && asset.value
         ? String(Math.round(asset.value / Number(asset.quantityTola))) : ''
+      f.purchaseDate         = asset.purchaseDate || ''
     }
 
     setForm(f)
@@ -267,7 +291,8 @@ export default function Assets() {
         return setError('Enter the current price per share.')
       const value = Math.round(shares * currentPricePerShare)
       const purchasePrice = !isNaN(pricePerShare) && pricePerShare > 0 ? pricePerShare : null
-      payload = { name: form.name.trim(), type: 'stocks', value, quantityTola: shares, purchasePrice, commissionPct }
+      const purchaseDate = form.purchaseDate || null
+      payload = { name: form.name.trim(), type: 'stocks', value, quantityTola: shares, purchasePrice, commissionPct: null, purchaseDate }
     } else {
       const val = parseFloat(form.value)
       if (!form.value || isNaN(val) || val < 0)
@@ -577,7 +602,7 @@ export default function Assets() {
                 const currentPricePerShare = shares ? Math.round(asset.value / shares) : null
                 const pnl = totalInvested != null ? asset.value - totalInvested : null
                 const pnlPct = totalInvested ? (pnl / totalInvested) * 100 : null
-                const netValue = asset.commissionPct != null ? Math.round(asset.value * (1 - asset.commissionPct / 100)) : null
+                const nepseCalc = totalInvested != null ? calcNepseReceivable(asset.value, totalInvested, asset.purchaseDate) : null
                 const pct = totalAssets > 0 ? (asset.value / totalAssets) * 100 : 0
 
                 return (
@@ -592,6 +617,7 @@ export default function Assets() {
                           <p className="text-xs text-gray-400 mt-0.5">
                             {shares ? `${shares} shares` : 'Stocks'}
                             {purchasePricePerShare ? ` · avg ${formatCurrency(purchasePricePerShare)}/share` : ''}
+                            {asset.purchaseDate ? ` · bought ${asset.purchaseDate}` : ''}
                           </p>
                         </div>
                       </div>
@@ -626,10 +652,31 @@ export default function Assets() {
                       </div>
                     )}
 
-                    {netValue != null && (
-                      <div className="flex items-center justify-between bg-emerald-50 rounded-lg px-2.5 py-1.5">
-                        <span className="text-xs text-emerald-700">After {asset.commissionPct}% commission</span>
-                        <span className="text-sm font-bold text-emerald-700">{formatCurrency(netValue)}</span>
+                    {nepseCalc != null && (
+                      <div className="bg-indigo-50 rounded-lg px-3 py-2 space-y-1">
+                        <p className="text-[10px] font-semibold text-indigo-700 uppercase tracking-wide mb-1.5">NEPSE Net Receivable</p>
+                        <div className="flex justify-between text-[11px] text-gray-500">
+                          <span>Brokerage (tiered)</span>
+                          <span className="font-medium text-gray-700">−{formatCurrency(nepseCalc.brokerage)}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] text-gray-500">
+                          <span>SEBON (0.015%)</span>
+                          <span className="font-medium text-gray-700">−{formatCurrency(nepseCalc.sebon)}</span>
+                        </div>
+                        <div className="flex justify-between text-[11px] text-gray-500">
+                          <span>DP Charge</span>
+                          <span className="font-medium text-gray-700">−{formatCurrency(nepseCalc.dp)}</span>
+                        </div>
+                        {nepseCalc.cgt > 0 && (
+                          <div className="flex justify-between text-[11px] text-gray-500">
+                            <span>CGT ({nepseCalc.isLongTerm ? '5%' : '7.5%'}{!asset.purchaseDate ? ' · assumed short-term' : ''})</span>
+                            <span className="font-medium text-gray-700">−{formatCurrency(nepseCalc.cgt)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between text-sm font-bold border-t border-indigo-200 pt-1.5 mt-1">
+                          <span className="text-indigo-800">Net Receivable</span>
+                          <span className="text-indigo-800">{formatCurrency(Math.max(0, nepseCalc.receivable))}</span>
+                        </div>
                       </div>
                     )}
 
@@ -992,11 +1039,45 @@ export default function Assets() {
                 </div>
               )}
               <div>
-                <label className="label">Broker Commission (%)</label>
-                <input type="number" placeholder="e.g. 1.5" min="0" max="100" step="0.01" className="input-field"
-                  value={form.commissionPct} onChange={e => set('commissionPct', e.target.value)} />
-                <p className="text-xs text-gray-400 mt-1">Leave blank if none.</p>
+                <label className="label">Purchase Date <span className="text-gray-400 font-normal">— optional, for CGT</span></label>
+                <input type="date" className="input-field"
+                  value={form.purchaseDate} onChange={e => set('purchaseDate', e.target.value)} />
+                <p className="text-xs text-gray-400 mt-1">Used to determine CGT rate: &lt;1 yr = 7.5%, ≥1 yr = 5%.</p>
               </div>
+              {estimatedStockValue != null && estimatedStockInvested != null && (() => {
+                const { brokerage, sebon, dp, cgt, receivable, isLongTerm } = calcNepseReceivable(estimatedStockValue, estimatedStockInvested, form.purchaseDate)
+                return (
+                  <div className="bg-indigo-50 rounded-xl px-3 py-3 space-y-1.5">
+                    <p className="text-[10px] font-semibold text-indigo-700 uppercase tracking-wide mb-2">NEPSE Net Receivable (if sold today)</p>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Sale Value</span>
+                      <span className="font-medium text-gray-700">{formatCurrency(estimatedStockValue)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Brokerage (tiered)</span>
+                      <span className="font-medium text-red-600">−{formatCurrency(brokerage)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>SEBON (0.015%)</span>
+                      <span className="font-medium text-red-600">−{formatCurrency(sebon)}</span>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>DP Charge</span>
+                      <span className="font-medium text-red-600">−{formatCurrency(dp)}</span>
+                    </div>
+                    {cgt > 0 && (
+                      <div className="flex justify-between text-xs text-gray-500">
+                        <span>CGT ({isLongTerm ? '5% long-term' : '7.5% short-term'})</span>
+                        <span className="font-medium text-red-600">−{formatCurrency(cgt)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm font-bold border-t border-indigo-200 pt-2 mt-1">
+                      <span className="text-indigo-800">Net Receivable</span>
+                      <span className="text-indigo-800">{formatCurrency(Math.max(0, receivable))}</span>
+                    </div>
+                  </div>
+                )
+              })()}
             </>
           )}
 

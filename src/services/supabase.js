@@ -77,6 +77,7 @@ export const db = {
     rateMode: r.rate_mode || 'auto',
     commissionPct: r.commission_pct != null ? Number(r.commission_pct) : null,
     purchasePrice: r.purchase_price != null ? Number(r.purchase_price) : null,
+    purchaseDate: r.purchase_date || null,
     updatedAt: r.updated_at,
   }),
   fromAsset: (d, userId) => ({
@@ -88,6 +89,7 @@ export const db = {
     rate_mode: d.rateMode ?? 'auto',
     commission_pct: d.commissionPct ?? null,
     purchase_price: d.purchasePrice ?? null,
+    purchase_date: d.purchaseDate || null,
     updated_at: new Date().toISOString(),
   }),
 
