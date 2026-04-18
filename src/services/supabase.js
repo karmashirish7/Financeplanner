@@ -76,6 +76,7 @@ export const db = {
     quantityTola: r.quantity_tola != null ? Number(r.quantity_tola) : null,
     rateMode: r.rate_mode || 'auto',
     commissionPct: r.commission_pct != null ? Number(r.commission_pct) : null,
+    purchasePrice: r.purchase_price != null ? Number(r.purchase_price) : null,
     updatedAt: r.updated_at,
   }),
   fromAsset: (d, userId) => ({
@@ -86,6 +87,7 @@ export const db = {
     quantity_tola: d.quantityTola ?? null,
     rate_mode: d.rateMode ?? 'auto',
     commission_pct: d.commissionPct ?? null,
+    purchase_price: d.purchasePrice ?? null,
     updated_at: new Date().toISOString(),
   }),
 
