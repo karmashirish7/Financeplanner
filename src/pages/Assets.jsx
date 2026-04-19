@@ -59,10 +59,10 @@ function calcNepseReceivable(saleValue, investedValue, purchaseDate) {
   const brokerage = calcBrokerage(saleValue)
   const sebon = Math.round(saleValue * 0.00015)
   const dp = 25
-  const profit = saleValue - investedValue
   const isLongTerm = purchaseDate
     ? (Date.now() - new Date(purchaseDate).getTime()) >= 365 * 24 * 3600 * 1000
     : false
+  const profit = saleValue - brokerage - sebon - dp - investedValue
   const cgt = profit > 0 ? Math.round(profit * (isLongTerm ? 0.05 : 0.075)) : 0
   const receivable = saleValue - brokerage - sebon - dp - cgt
   return { brokerage, sebon, dp, cgt, receivable, profit, isLongTerm }
