@@ -165,22 +165,32 @@ export default function Assets() {
   const metalAssets = assets.filter(a => METAL_TYPES.includes(a.type))
   const stockAssets = assets.filter(a => a.type === 'stocks')
   const otherAssets = assets.filter(a => OTHER_TYPES.includes(a.type))
-  const totalAssets = assets.reduce((s, a) => s + a.value, 0)
 
   // Metals
   const metalCurrentValue = metalAssets.reduce((s, a) => s + a.value, 0)
 
-  // Stocks summary
+  // Stocks summary — only include stocks with full data in invested/P&L
   const stocksCurrentValue  = stockAssets.reduce((s, a) => s + a.value, 0)
-  const stocksTotalInvested = stockAssets.reduce((s, a) =>
-    s + (a.quantityTola && a.purchasePrice ? a.quantityTola * a.purchasePrice : 0), 0)
-  const stocksPnL = stocksCurrentValue - stocksTotalInvested
+  const stocksWithCost      = stockAssets.filter(a => a.quantityTola && a.purchasePrice)
+  const stocksTotalInvested = stocksWithCost.reduce((s, a) => s + a.quantityTola * a.purchasePrice, 0)
+  const stocksTrackedValue  = stocksWithCost.reduce((s, a) => s + a.value, 0)
+  const stocksPnL           = stocksTrackedValue - stocksTotalInvested
+  // Net Receivable = market value after all NEPSE charges (brokerage, SEBON, DP, CGT)
+  const stocksNetReceivable = stockAssets.reduce((s, a) => {
+    const inv = a.quantityTola && a.purchasePrice ? a.quantityTola * a.purchasePrice : null
+    if (inv == null) return s + a.value  // no purchase data → no CGT possible, use market value
+    const { receivable } = calcNepseReceivable(a.value, inv, a.purchaseDate)
+    return s + Math.max(0, receivable)
+  }, 0)
 
   // Others summary
   const otherCurrentValue  = otherAssets.reduce((s, a) => s + a.value, 0)
   const otherTotalCost     = otherAssets.reduce((s, a) => s + (a.purchasePrice || 0), 0)
 
-  // Pie data
+  // Total uses market value for all assets (consistent with metals/others)
+  const totalAssets = metalCurrentValue + stocksCurrentValue + otherCurrentValue
+
+  // Pie data — all entries use market value for consistency
   const byType = ASSET_TYPES.map(t => ({
     ...t, total: assets.filter(a => a.type === t.value).reduce((s, a) => s + a.value, 0),
   })).filter(t => t.total > 0)
@@ -557,10 +567,14 @@ export default function Assets() {
               <div className="card p-4">
                 <p className="text-xs text-gray-500 font-medium mb-1">Total Invested</p>
                 <p className="text-2xl font-bold text-gray-900">{formatCurrency(stocksTotalInvested)}</p>
+                {stocksWithCost.length < stockAssets.length && (
+                  <p className="text-[10px] text-gray-400 mt-1">{stocksWithCost.length} of {stockAssets.length} stocks tracked</p>
+                )}
               </div>
               <div className="card p-4">
-                <p className="text-xs text-gray-500 font-medium mb-1">Current Value</p>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(stocksCurrentValue)}</p>
+                <p className="text-xs text-gray-500 font-medium mb-1">Net Receivable</p>
+                <p className="text-2xl font-bold text-gray-900">{formatCurrency(stocksNetReceivable)}</p>
+                <p className="text-[10px] text-gray-400 mt-1">Market: {formatCurrency(stocksCurrentValue)}</p>
               </div>
               <div className={`card p-4 ${pnlBg(stocksPnL)}`}>
                 <p className="text-xs text-gray-500 font-medium mb-1">Overall P&amp;L</p>
