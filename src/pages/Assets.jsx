@@ -173,8 +173,6 @@ export default function Assets() {
   const stocksCurrentValue  = stockAssets.reduce((s, a) => s + a.value, 0)
   const stocksWithCost      = stockAssets.filter(a => a.quantityTola && a.purchasePrice)
   const stocksTotalInvested = stocksWithCost.reduce((s, a) => s + a.quantityTola * a.purchasePrice, 0)
-  const stocksTrackedValue  = stocksWithCost.reduce((s, a) => s + a.value, 0)
-  const stocksPnL           = stocksTrackedValue - stocksTotalInvested
   // Net Receivable = market value after all NEPSE charges (brokerage, SEBON, DP, CGT)
   const stocksNetReceivable = stockAssets.reduce((s, a) => {
     const inv = a.quantityTola && a.purchasePrice ? a.quantityTola * a.purchasePrice : null
@@ -182,6 +180,13 @@ export default function Assets() {
     const { receivable } = calcNepseReceivable(a.value, inv, a.purchaseDate)
     return s + Math.max(0, receivable)
   }, 0)
+  // P&L = net receivable (tracked stocks only) − total invested
+  const stocksTrackedNetReceivable = stocksWithCost.reduce((s, a) => {
+    const inv = a.quantityTola * a.purchasePrice
+    const { receivable } = calcNepseReceivable(a.value, inv, a.purchaseDate)
+    return s + Math.max(0, receivable)
+  }, 0)
+  const stocksPnL = stocksTrackedNetReceivable - stocksTotalInvested
 
   // Others summary
   const otherCurrentValue  = otherAssets.reduce((s, a) => s + a.value, 0)
@@ -614,9 +619,9 @@ export default function Assets() {
                 const purchasePricePerShare = asset.purchasePrice
                 const totalInvested = shares && purchasePricePerShare ? shares * purchasePricePerShare : null
                 const currentPricePerShare = shares ? Math.round(asset.value / shares) : null
-                const pnl = totalInvested != null ? asset.value - totalInvested : null
-                const pnlPct = totalInvested ? (pnl / totalInvested) * 100 : null
                 const nepseCalc = totalInvested != null ? calcNepseReceivable(asset.value, totalInvested, asset.purchaseDate) : null
+                const pnl = nepseCalc != null ? nepseCalc.receivable - totalInvested : null
+                const pnlPct = totalInvested && pnl != null ? (pnl / totalInvested) * 100 : null
                 const pct = totalAssets > 0 ? (asset.value / totalAssets) * 100 : 0
 
                 return (
