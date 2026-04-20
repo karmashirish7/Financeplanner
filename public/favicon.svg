@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Outer coin ring -->
+  <circle cx="32" cy="32" r="31" fill="#b45309"/>
+  <!-- Coin face -->
+  <circle cx="32" cy="32" r="27" fill="#f59e0b"/>
+  <!-- Inner detail ring -->
+  <circle cx="32" cy="32" r="23" fill="none" stroke="#fbbf24" stroke-width="1.5"/>
+  <!-- Rupee symbol -->
+  <text x="32" y="42" text-anchor="middle" font-family="Arial, sans-serif" font-size="26" font-weight="bold" fill="#78350f">₨</text>
+</svg>
