@@ -202,6 +202,27 @@ export const db = {
     notes:          d.notes || null,
   }),
 
+  // ── Fixed Recurring Items ─────────────────────────────────
+  toFixedItem: (r) => ({
+    id:        r.id,
+    name:      r.name,
+    type:      r.type,
+    amount:    Number(r.amount),
+    frequency: r.frequency || 'monthly',
+    isActive:  r.is_active !== false,
+    notes:     r.notes || '',
+    createdAt: r.created_at,
+  }),
+  fromFixedItem: (d, userId) => ({
+    user_id:   userId,
+    name:      d.name,
+    type:      d.type,
+    amount:    d.amount,
+    frequency: d.frequency || 'monthly',
+    is_active: d.isActive !== false,
+    notes:     d.notes || null,
+  }),
+
   // ── Budgets ───────────────────────────────────────────────
   toBudget: (r) => ({
     id: r.id,

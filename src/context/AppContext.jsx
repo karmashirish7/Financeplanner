@@ -146,6 +146,7 @@ const EMPTY = {
   liabilities:  [],
   emiPlans:     [],
   emiPayments:  [],
+  fixedItems:   [],
 }
 
 export function AppProvider({ children }) {
@@ -160,7 +161,7 @@ export function AppProvider({ children }) {
   const fetchAll = useCallback(async (uid) => {
     console.log('[fetchAll] called for uid:', uid)
     setDataLoading(true)
-    const [cats, accs, txns, assets, goals, budgets, liabilities, rates, emiPlans, emiPayments] = await Promise.all([
+    const [cats, accs, txns, assets, goals, budgets, liabilities, rates, emiPlans, emiPayments, fixedItems] = await Promise.all([
       supabase.from('categories').select('*').eq('user_id', uid).order('type').order('name'),
       supabase.from('accounts').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('transactions').select('*').eq('user_id', uid).order('date', { ascending: false }),
@@ -171,6 +172,7 @@ export function AppProvider({ children }) {
       supabase.from('precious_metal_rates').select('*').order('date', { ascending: false }).limit(4),
       supabase.from('emi_plans').select('*').eq('user_id', uid).order('created_at'),
       supabase.from('emi_payments').select('*').eq('user_id', uid).order('due_date', { ascending: false }),
+      supabase.from('fixed_items').select('*').eq('user_id', uid).order('created_at'),
     ])
 
     // Build { gold: latestRate, silver: latestRate }
@@ -203,6 +205,7 @@ export function AppProvider({ children }) {
     if (liabilities.error)  console.error('[fetchAll] liabilities:', liabilities.error)
     if (emiPlans.error)     console.error('[fetchAll] emiPlans:', emiPlans.error)
     if (emiPayments.error)  console.error('[fetchAll] emiPayments:', emiPayments.error)
+    if (fixedItems.error)   console.error('[fetchAll] fixedItems:', fixedItems.error)
 
     setData({
       categories:   catRows.map(db.toCategory),
@@ -214,6 +217,7 @@ export function AppProvider({ children }) {
       liabilities:  (liabilities.data  || []).map(db.toLiability),
       emiPlans:     (emiPlans.data     || []).map(db.toEmiPlan),
       emiPayments:  (emiPayments.data  || []).map(db.toEmiPayment),
+      fixedItems:   (fixedItems.data   || []).map(db.toFixedItem),
     })
     setDataLoading(false)
   }, [])
@@ -544,7 +548,9 @@ export function AppProvider({ children }) {
     async addLiability(d) {
       const { data: row, error } = await supabase.from('liabilities').insert(db.fromLiability(d, user.id)).select().single()
       if (error) throw error
-      setData(s => ({ ...s, liabilities: [...s.liabilities, db.toLiability(row)] }))
+      const newLiab = db.toLiability(row)
+      setData(s => ({ ...s, liabilities: [...s.liabilities, newLiab] }))
+      return newLiab
     },
     async updateLiability(d) {
       const { error } = await supabase.from('liabilities').update(db.fromLiability(d, user.id)).eq('id', d.id)
@@ -680,6 +686,23 @@ export function AppProvider({ children }) {
           db.toEmiPayment(pmtRow),
         ],
       }))
+    },
+
+    // ── Fixed Recurring Items ──────────────────────────────────────────────
+    async addFixedItem(d) {
+      const { data: row, error } = await supabase.from('fixed_items').insert(db.fromFixedItem(d, user.id)).select().single()
+      if (error) throw error
+      setData(s => ({ ...s, fixedItems: [...s.fixedItems, db.toFixedItem(row)] }))
+    },
+    async updateFixedItem(d) {
+      const { error } = await supabase.from('fixed_items').update(db.fromFixedItem(d, user.id)).eq('id', d.id)
+      if (error) throw error
+      setData(s => ({ ...s, fixedItems: s.fixedItems.map(f => f.id === d.id ? { ...d } : f) }))
+    },
+    async deleteFixedItem(id) {
+      const { error } = await supabase.from('fixed_items').delete().eq('id', id)
+      if (error) throw error
+      setData(s => ({ ...s, fixedItems: s.fixedItems.filter(f => f.id !== id) }))
     },
 
     // ── Budgets ────────────────────────────────────────────────────────────

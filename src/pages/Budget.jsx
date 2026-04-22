@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect } from 'react'
-import { HiPlus, HiTrash, HiExclamationTriangle, HiCheckCircle } from 'react-icons/hi2'
+import { HiPlus, HiTrash, HiExclamationTriangle, HiCheckCircle, HiPencil, HiArrowUp, HiArrowDown } from 'react-icons/hi2'
 import { useApp } from '../context/AppContext'
 import Modal from '../components/ui/Modal'
 import { formatCurrency, formatCurrencyShort, isInMonth } from '../utils/formatters'
@@ -11,11 +11,25 @@ const MONTHS = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov
 const TABS = [
   { id: 'overview', label: '📊 Overview' },
   { id: 'planner',  label: '🧮 Planner'  },
+  { id: 'fixed',    label: '💼 Fixed'    },
   { id: 'monthly',  label: '📅 Monthly'  },
 ]
 
+const FREQ_LABELS = { weekly: 'Weekly', monthly: 'Monthly', fortnight: 'Fortnightly' }
+
+function toMonthly(amount, frequency) {
+  if (frequency === 'weekly')    return amount * (52 / 12)
+  if (frequency === 'fortnight') return amount * (26 / 12)
+  return amount
+}
+
+const FIXED_EMPTY = { name: '', type: 'expense', amount: '', frequency: 'monthly', notes: '', isActive: true }
+
 export default function Budget() {
-  const { categories, budgets, setBudget, deleteBudget, transactions, emiPlans, goals } = useApp()
+  const {
+    categories, budgets, setBudget, deleteBudget, transactions, emiPlans, goals,
+    fixedItems, addFixedItem, updateFixedItem, deleteFixedItem,
+  } = useApp()
 
   const now = new Date()
   const [tab,   setTab]   = useState('overview')
@@ -23,6 +37,45 @@ export default function Budget() {
   const [year,  setYear]  = useState(now.getFullYear())
   const [modal, setModal] = useState(false)
   const [form,  setForm]  = useState({ categoryId: '', amount: '' })
+
+  // Fixed items modal state
+  const [fixedModal,   setFixedModal]   = useState(false)
+  const [fixedEditing, setFixedEditing] = useState(null)
+  const [fixedForm,    setFixedForm]    = useState(FIXED_EMPTY)
+  const [fixedSaving,  setFixedSaving]  = useState(false)
+  const [fixedError,   setFixedError]   = useState('')
+
+  function openAddFixed(type = 'expense') {
+    setFixedEditing(null)
+    setFixedForm({ ...FIXED_EMPTY, type })
+    setFixedError('')
+    setFixedModal(true)
+  }
+  function openEditFixed(item) {
+    setFixedEditing(item)
+    setFixedForm({ name: item.name, type: item.type, amount: String(item.amount), frequency: item.frequency, notes: item.notes, isActive: item.isActive })
+    setFixedError('')
+    setFixedModal(true)
+  }
+  function closeFixed() { setFixedModal(false); setFixedEditing(null); setFixedError('') }
+  function setF(k, v)   { setFixedForm(p => ({ ...p, [k]: v })) }
+
+  async function handleFixedSubmit(e) {
+    e.preventDefault()
+    if (!fixedForm.name || !fixedForm.amount) return
+    setFixedSaving(true)
+    setFixedError('')
+    try {
+      const payload = { ...fixedForm, amount: parseFloat(fixedForm.amount) || 0 }
+      if (fixedEditing) await updateFixedItem({ ...payload, id: fixedEditing.id })
+      else              await addFixedItem(payload)
+      closeFixed()
+    } catch (err) {
+      setFixedError(err?.message || 'Failed to save.')
+    } finally {
+      setFixedSaving(false)
+    }
+  }
 
   const expenseCats = categories.filter(c => c.type === 'expense')
 
@@ -78,20 +131,24 @@ export default function Budget() {
   const totalEmi          = emiPlans.filter(p => p.isActive && p.frequency === 'monthly').reduce((s, p) => s + p.amount, 0)
   const totalSip          = goals.reduce((s, g) => s + (g.monthlyContribution || 0), 0)
   const totalCatExpenses  = Object.values(catInputs).reduce((s, v) => s + (parseFloat(v) || 0), 0)
-  const plannerSavings    = plannerIncomeNum - totalEmi - totalSip - totalCatExpenses
-  const plannerSavingsRate = plannerIncomeNum > 0 ? (plannerSavings / plannerIncomeNum) * 100 : 0
+  const totalFixedIncome  = (fixedItems || []).filter(f => f.isActive && f.type === 'income').reduce((s, f) => s + toMonthly(f.amount, f.frequency), 0)
+  const totalFixedExpense = (fixedItems || []).filter(f => f.isActive && f.type === 'expense').reduce((s, f) => s + toMonthly(f.amount, f.frequency), 0)
+  const effectiveIncome   = plannerIncomeNum + totalFixedIncome
+  const plannerSavings    = effectiveIncome - totalEmi - totalSip - totalCatExpenses - totalFixedExpense
+  const plannerSavingsRate = effectiveIncome > 0 ? (plannerSavings / effectiveIncome) * 100 : 0
 
   const plannerPieData = useMemo(() => {
     const slices = []
-    if (totalEmi > 0)        slices.push({ name: 'EMI / Loans', value: totalEmi,  color: '#ef4444' })
-    if (totalSip > 0)        slices.push({ name: 'SIP / Goals', value: totalSip,  color: '#8b5cf6' })
+    if (totalFixedExpense > 0) slices.push({ name: 'Fixed Expenses', value: totalFixedExpense, color: '#f97316' })
+    if (totalEmi > 0)          slices.push({ name: 'EMI / Loans',    value: totalEmi,           color: '#ef4444' })
+    if (totalSip > 0)          slices.push({ name: 'SIP / Goals',    value: totalSip,           color: '#8b5cf6' })
     expenseCats.forEach(cat => {
       const v = parseFloat(catInputs[cat.id]) || 0
       if (v > 0) slices.push({ name: cat.name, value: v, color: cat.color || '#6b7280' })
     })
-    if (plannerSavings > 0)  slices.push({ name: 'Savings',    value: plannerSavings, color: '#10b981' })
+    if (plannerSavings > 0)    slices.push({ name: 'Savings',        value: plannerSavings,     color: '#10b981' })
     return slices
-  }, [catInputs, totalEmi, totalSip, plannerSavings, expenseCats])
+  }, [catInputs, totalEmi, totalSip, totalFixedExpense, plannerSavings, expenseCats])
 
   // ── Monthly tab data ──────────────────────────────────────────────────────
   const actualSpend = {}
@@ -270,8 +327,8 @@ export default function Budget() {
           <div className="lg:col-span-3 space-y-4">
 
             {/* Income */}
-            <div className="card p-5">
-              <h3 className="text-sm font-semibold text-gray-900 mb-3">💰 Monthly Income</h3>
+            <div className="card p-5 space-y-3">
+              <h3 className="text-sm font-semibold text-gray-900">💰 Base Monthly Income</h3>
               <input
                 type="number" min="0" step="500"
                 className="input-field text-base font-semibold"
@@ -281,18 +338,41 @@ export default function Budget() {
               />
               {avgIncome > 0 && (
                 <button onClick={() => setPlannerIncome(String(avgIncome))}
-                  className="text-xs text-indigo-500 mt-1.5 hover:underline">
+                  className="text-xs text-indigo-500 hover:underline">
                   Use 6-month average ({formatCurrency(avgIncome)})
                 </button>
+              )}
+              {totalFixedIncome > 0 && (
+                <div className="flex items-center justify-between rounded-lg bg-emerald-50 px-3 py-2 text-xs">
+                  <span className="text-emerald-700 font-medium">+ Fixed recurring income</span>
+                  <span className="text-emerald-700 font-bold">{formatCurrency(Math.round(totalFixedIncome))}/mo</span>
+                </div>
+              )}
+              {(plannerIncomeNum > 0 || totalFixedIncome > 0) && (
+                <div className="flex justify-between text-xs text-gray-500 border-t border-gray-100 pt-2">
+                  <span>Effective monthly income</span>
+                  <span className="font-semibold text-gray-800">{formatCurrency(Math.round(effectiveIncome))}</span>
+                </div>
               )}
             </div>
 
             {/* Fixed Commitments */}
             {(emiPlans.filter(p => p.isActive && p.frequency === 'monthly').length > 0 ||
-              goals.some(g => g.monthlyContribution > 0)) && (
+              goals.some(g => g.monthlyContribution > 0) ||
+              totalFixedExpense > 0) && (
               <div className="card p-5">
                 <h3 className="text-sm font-semibold text-gray-900 mb-3">🔒 Fixed Commitments</h3>
                 <div className="space-y-2">
+                  {(fixedItems || []).filter(f => f.isActive && f.type === 'expense').map(item => (
+                    <div key={item.id} className="flex items-center justify-between py-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="w-2 h-2 rounded-full bg-orange-400 shrink-0" />
+                        <span className="text-sm text-gray-700">{item.name}</span>
+                        <span className="text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded font-medium capitalize">{FREQ_LABELS[item.frequency]}</span>
+                      </div>
+                      <span className="text-sm font-semibold text-orange-600">{formatCurrency(Math.round(toMonthly(item.amount, item.frequency)))}/mo</span>
+                    </div>
+                  ))}
                   {emiPlans.filter(p => p.isActive && p.frequency === 'monthly').map(plan => (
                     <div key={plan.id} className="flex items-center justify-between py-1.5">
                       <div className="flex items-center gap-2">
@@ -315,7 +395,7 @@ export default function Budget() {
                   ))}
                   <div className="border-t border-gray-100 pt-2 flex justify-between">
                     <span className="text-sm font-medium text-gray-500">Total Fixed</span>
-                    <span className="text-sm font-bold text-gray-900">{formatCurrency(totalEmi + totalSip)}</span>
+                    <span className="text-sm font-bold text-gray-900">{formatCurrency(Math.round(totalFixedExpense + totalEmi + totalSip))}</span>
                   </div>
                 </div>
               </div>
@@ -397,9 +477,21 @@ export default function Budget() {
               {/* Breakdown rows */}
               <div className="space-y-2.5">
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-500">💰 Income</span>
+                  <span className="text-sm text-gray-500">💰 Base Income</span>
                   <span className="text-sm font-semibold text-gray-900">+{formatCurrency(plannerIncomeNum)}</span>
                 </div>
+                {totalFixedIncome > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">📥 Fixed Income</span>
+                    <span className="text-sm font-semibold text-emerald-600">+{formatCurrency(Math.round(totalFixedIncome))}</span>
+                  </div>
+                )}
+                {totalFixedExpense > 0 && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-500">📤 Fixed Expenses</span>
+                    <span className="text-sm font-semibold text-orange-500">−{formatCurrency(Math.round(totalFixedExpense))}</span>
+                  </div>
+                )}
                 {totalEmi > 0 && (
                   <div className="flex justify-between items-center">
                     <span className="text-sm text-gray-500">🏦 EMI / Loans</span>
@@ -413,16 +505,16 @@ export default function Budget() {
                   </div>
                 )}
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-gray-500">📊 Expenses</span>
+                  <span className="text-sm text-gray-500">📊 Variable Exp.</span>
                   <span className="text-sm font-semibold text-orange-500">−{formatCurrency(totalCatExpenses)}</span>
                 </div>
                 <div className="border-t border-gray-100 pt-2.5 flex justify-between items-center">
                   <span className="text-sm font-semibold text-gray-700">💵 Savings</span>
                   <div className="text-right">
                     <p className={`text-xl font-bold ${plannerSavings >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {plannerSavings >= 0 ? '+' : ''}{formatCurrency(plannerSavings)}
+                      {plannerSavings >= 0 ? '+' : ''}{formatCurrency(Math.round(plannerSavings))}
                     </p>
-                    {plannerIncomeNum > 0 && (
+                    {effectiveIncome > 0 && (
                       <p className={`text-xs font-medium ${plannerSavings >= 0 ? 'text-emerald-500' : 'text-red-400'}`}>
                         {Math.round(plannerSavingsRate)}% of income
                       </p>
@@ -432,7 +524,7 @@ export default function Budget() {
               </div>
 
               {/* Health hint */}
-              {plannerIncomeNum > 0 && (
+              {effectiveIncome > 0 && (
                 <div className={`p-3 rounded-xl text-xs font-medium ${
                   plannerSavings < 0           ? 'bg-red-50 text-red-600'
                   : plannerSavingsRate >= 20   ? 'bg-emerald-50 text-emerald-700'
@@ -477,7 +569,7 @@ export default function Budget() {
                           <span className="text-gray-600">{d.name}</span>
                         </div>
                         <span className="text-gray-500 font-medium">
-                          {Math.round((d.value / plannerIncomeNum) * 100)}%
+                          {effectiveIncome > 0 ? Math.round((d.value / effectiveIncome) * 100) : 0}%
                         </span>
                       </div>
                     ))}
@@ -486,6 +578,139 @@ export default function Budget() {
               )}
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ══ FIXED ITEMS ═══════════════════════════════════════════════════════ */}
+      {tab === 'fixed' && (
+        <div className="space-y-5">
+
+          {/* Summary bar */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="card p-4 border-l-4 border-emerald-400">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-gray-500 font-medium">Fixed Income</p>
+                <button onClick={() => openAddFixed('income')} className="p-1 text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
+                  <HiPlus className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xl font-bold text-emerald-600">{formatCurrency(Math.round(totalFixedIncome))}</p>
+              <p className="text-[10px] text-gray-400 mt-1">
+                {(fixedItems || []).filter(f => f.isActive && f.type === 'income').length} active · /mo
+              </p>
+            </div>
+            <div className="card p-4 border-l-4 border-orange-400">
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-xs text-gray-500 font-medium">Fixed Expenses</p>
+                <button onClick={() => openAddFixed('expense')} className="p-1 text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
+                  <HiPlus className="w-4 h-4" />
+                </button>
+              </div>
+              <p className="text-xl font-bold text-orange-600">{formatCurrency(Math.round(totalFixedExpense))}</p>
+              <p className="text-[10px] text-gray-400 mt-1">
+                {(fixedItems || []).filter(f => f.isActive && f.type === 'expense').length} active · /mo
+              </p>
+            </div>
+          </div>
+
+          {/* Income section */}
+          <div className="card overflow-hidden">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">📥 Fixed Income Sources</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Salary, rent, dividends, freelance retainers…</p>
+              </div>
+              <button onClick={() => openAddFixed('income')} className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3">
+                <HiPlus className="w-3.5 h-3.5" /> Add
+              </button>
+            </div>
+            {(fixedItems || []).filter(f => f.type === 'income').length === 0 ? (
+              <div className="px-5 pb-8 text-center text-gray-400 text-sm">
+                No fixed income items yet.
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {(fixedItems || []).filter(f => f.type === 'income').map(item => (
+                  <div key={item.id} className={`px-5 py-3 flex items-center gap-3 ${!item.isActive ? 'opacity-50' : ''}`}>
+                    <div className="w-8 h-8 rounded-lg bg-emerald-50 flex items-center justify-center shrink-0">
+                      <HiArrowUp className="w-4 h-4 text-emerald-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                      <p className="text-xs text-gray-400">
+                        {formatCurrency(item.amount)} · {FREQ_LABELS[item.frequency]}
+                        {item.frequency !== 'monthly' && ` (${formatCurrency(Math.round(toMonthly(item.amount, item.frequency)))}/mo)`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {!item.isActive && <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">Inactive</span>}
+                      <button onClick={() => openEditFixed(item)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                        <HiPencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => deleteFixedItem(item.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                        <HiTrash className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Expense section */}
+          <div className="card overflow-hidden">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+              <div>
+                <h3 className="text-sm font-semibold text-gray-900">📤 Fixed Expenses</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Rent, subscriptions, insurance, utilities…</p>
+              </div>
+              <button onClick={() => openAddFixed('expense')} className="btn-primary flex items-center gap-1.5 text-xs py-1.5 px-3">
+                <HiPlus className="w-3.5 h-3.5" /> Add
+              </button>
+            </div>
+            {(fixedItems || []).filter(f => f.type === 'expense').length === 0 ? (
+              <div className="px-5 pb-8 text-center text-gray-400 text-sm">
+                No fixed expense items yet.
+              </div>
+            ) : (
+              <div className="divide-y divide-gray-50">
+                {(fixedItems || []).filter(f => f.type === 'expense').map(item => (
+                  <div key={item.id} className={`px-5 py-3 flex items-center gap-3 ${!item.isActive ? 'opacity-50' : ''}`}>
+                    <div className="w-8 h-8 rounded-lg bg-orange-50 flex items-center justify-center shrink-0">
+                      <HiArrowDown className="w-4 h-4 text-orange-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-gray-900 truncate">{item.name}</p>
+                      <p className="text-xs text-gray-400">
+                        {formatCurrency(item.amount)} · {FREQ_LABELS[item.frequency]}
+                        {item.frequency !== 'monthly' && ` (${formatCurrency(Math.round(toMonthly(item.amount, item.frequency)))}/mo)`}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {!item.isActive && <span className="text-[10px] bg-gray-100 text-gray-400 px-1.5 py-0.5 rounded">Inactive</span>}
+                      <button onClick={() => openEditFixed(item)} className="p-1.5 text-gray-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                        <HiPencil className="w-3.5 h-3.5" />
+                      </button>
+                      <button onClick={() => deleteFixedItem(item.id)} className="p-1.5 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors">
+                        <HiTrash className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Net fixed monthly */}
+          {(totalFixedIncome > 0 || totalFixedExpense > 0) && (
+            <div className="card p-4 flex justify-between items-center">
+              <span className="text-sm font-medium text-gray-600">Net Fixed Monthly</span>
+              <span className={`text-lg font-bold ${totalFixedIncome - totalFixedExpense >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                {totalFixedIncome - totalFixedExpense >= 0 ? '+' : ''}
+                {formatCurrency(Math.round(totalFixedIncome - totalFixedExpense))}
+              </span>
+            </div>
+          )}
         </div>
       )}
 
@@ -600,6 +825,79 @@ export default function Budget() {
           </div>
         </div>
       )}
+
+      {/* Fixed Item Modal */}
+      <Modal isOpen={fixedModal} onClose={closeFixed}
+        title={fixedEditing ? 'Edit Fixed Item' : fixedForm.type === 'income' ? 'Add Fixed Income' : 'Add Fixed Expense'}
+        disableBackdropClose={fixedSaving || !!fixedError}>
+        <form onSubmit={handleFixedSubmit} className="space-y-4">
+          {fixedError && <p className="text-xs text-red-600 bg-red-50 border border-red-200 px-3 py-2 rounded-lg">{fixedError}</p>}
+
+          <div>
+            <label className="label">Type</label>
+            <div className="grid grid-cols-2 gap-2">
+              {[['income','📥 Income'],['expense','📤 Expense']].map(([v, l]) => (
+                <button key={v} type="button" onClick={() => setF('type', v)}
+                  className={`py-2.5 rounded-xl border text-sm font-medium transition-colors
+                    ${fixedForm.type === v
+                      ? v === 'income' ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-orange-400 bg-orange-50 text-orange-700'
+                      : 'border-gray-200 text-gray-500 hover:border-gray-300'}`}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <label className="label">Name</label>
+            <input type="text" required placeholder={fixedForm.type === 'income' ? 'e.g. Salary, Rental income' : 'e.g. Rent, Netflix, Internet'}
+              className="input-field" value={fixedForm.name} onChange={e => setF('name', e.target.value)} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Amount (NPR)</label>
+              <input type="number" required min="1" step="1" placeholder="0"
+                className="input-field" value={fixedForm.amount} onChange={e => setF('amount', e.target.value)} />
+            </div>
+            <div>
+              <label className="label">Frequency</label>
+              <select className="input-field" value={fixedForm.frequency} onChange={e => setF('frequency', e.target.value)}>
+                <option value="monthly">Monthly</option>
+                <option value="weekly">Weekly</option>
+                <option value="fortnight">Fortnightly</option>
+              </select>
+            </div>
+          </div>
+
+          {fixedForm.amount && fixedForm.frequency !== 'monthly' && (
+            <p className="text-xs text-indigo-600 bg-indigo-50 px-3 py-2 rounded-lg">
+              Monthly equivalent: <strong>{formatCurrency(Math.round(toMonthly(parseFloat(fixedForm.amount) || 0, fixedForm.frequency)))}</strong>
+            </p>
+          )}
+
+          <div>
+            <label className="label">Notes (optional)</label>
+            <input type="text" placeholder="e.g. Due on 1st"
+              className="input-field" value={fixedForm.notes} onChange={e => setF('notes', e.target.value)} />
+          </div>
+
+          <label className="flex items-center gap-3 cursor-pointer">
+            <div className={`relative w-10 h-6 rounded-full transition-colors ${fixedForm.isActive ? 'bg-indigo-600' : 'bg-gray-200'}`}
+              onClick={() => setF('isActive', !fixedForm.isActive)}>
+              <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform ${fixedForm.isActive ? 'translate-x-5' : 'translate-x-1'}`} />
+            </div>
+            <span className="text-sm text-gray-700">Active</span>
+          </label>
+
+          <div className="flex gap-3 pt-2">
+            <button type="button" onClick={closeFixed} disabled={fixedSaving} className="btn-secondary flex-1">Cancel</button>
+            <button type="submit" disabled={fixedSaving} className="btn-primary flex-1">
+              {fixedSaving ? 'Saving…' : fixedEditing ? 'Save Changes' : 'Add Item'}
+            </button>
+          </div>
+        </form>
+      </Modal>
 
       {/* Set Budget Modal */}
       <Modal isOpen={modal} onClose={() => setModal(false)} title={`Set Budget — ${MONTHS[month - 1]} ${year}`}>

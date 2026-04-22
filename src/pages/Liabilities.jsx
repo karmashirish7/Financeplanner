@@ -3,7 +3,7 @@ import {
   HiPlus, HiPencil, HiTrash,
   HiCreditCard, HiBuildingLibrary, HiAcademicCap, HiHome, HiEllipsisHorizontalCircle,
   HiFlag, HiCalendarDays, HiArrowTrendingDown, HiChartBar, HiBoltSlash, HiCheckCircle,
-  HiExclamationTriangle, HiInformationCircle,
+  HiExclamationTriangle, HiInformationCircle, HiSparkles,
 } from 'react-icons/hi2'
 import { useApp } from '../context/AppContext'
 import Modal from '../components/ui/Modal'
@@ -29,6 +29,7 @@ const EMPTY = {
   name: '', type: 'loan', balance: '',
   interestRate: '', minimumPayment: '', dueDay: '', color: '#ef4444',
   priority: 'medium', deadline: '',
+  autoEmi: false, customEmiAmount: '',
 }
 
 // ─── Scoring & Simulation ─────────────────────────────────────────────────────
@@ -168,7 +169,7 @@ function PriorityBadge({ priority }) {
 
 // ─── Main Component ────────────────────────────────────────────────────────────
 export default function Liabilities() {
-  const { liabilities, addLiability, updateLiability, deleteLiability, computed } = useApp()
+  const { liabilities, addLiability, updateLiability, deleteLiability, computed, addEmiPlan, emiPlans } = useApp()
   const [modal,   setModal]   = useState(false)
   const [editing, setEditing] = useState(null)
   const [form,    setForm]    = useState(EMPTY)
@@ -183,20 +184,43 @@ export default function Liabilities() {
   function openAdd()  { setEditing(null); setForm(EMPTY); setError(''); setModal(true) }
   function openEdit(l) {
     setEditing(l)
+    const hasEmiPlan = emiPlans.some(p => p.referenceId === l.id && p.type === 'liability')
     setForm({
       ...l,
-      balance:        String(l.balance),
-      interestRate:   l.interestRate   != null ? String(l.interestRate)   : '',
-      minimumPayment: l.minimumPayment != null ? String(l.minimumPayment) : '',
-      dueDay:         l.dueDay         != null ? String(l.dueDay)         : '',
-      priority:       l.priority || 'medium',
-      deadline:       l.deadline || '',
+      balance:         String(l.balance),
+      interestRate:    l.interestRate   != null ? String(l.interestRate)   : '',
+      minimumPayment:  l.minimumPayment != null ? String(l.minimumPayment) : '',
+      dueDay:          l.dueDay         != null ? String(l.dueDay)         : '',
+      priority:        l.priority || 'medium',
+      deadline:        l.deadline || '',
+      autoEmi:         false,
+      customEmiAmount: hasEmiPlan ? '' : '',
     })
     setError('')
     setModal(true)
   }
   function close()    { setModal(false); setEditing(null); setError('') }
   function set(f, v)  { setForm(p => ({ ...p, [f]: v })) }
+
+  // Compute suggested EMI: balance ÷ months-to-deadline, or fall back to minimumPayment
+  const computedEmi = useMemo(() => {
+    const balance = parseFloat(form.balance) || 0
+    const minPay  = parseFloat(form.minimumPayment) || 0
+    if (form.deadline && balance > 0) {
+      const monthsLeft = Math.max(1, Math.round(
+        (new Date(form.deadline) - new Date()) / (1000 * 60 * 60 * 24 * 30.44)
+      ))
+      return Math.ceil(balance / monthsLeft)
+    }
+    return minPay
+  }, [form.balance, form.minimumPayment, form.deadline])
+
+  const emiAmount = parseFloat(form.customEmiAmount) || computedEmi
+
+  // Whether the editing liability already has an EMI plan
+  const existingEmiPlan = editing
+    ? emiPlans.find(p => p.referenceId === editing.id && p.type === 'liability')
+    : null
 
   async function handleSubmit(e) {
     e.preventDefault()
@@ -212,8 +236,32 @@ export default function Liabilities() {
         priority:       form.priority || 'medium',
         deadline:       form.deadline || null,
       }
-      if (editing) await updateLiability(payload)
-      else         await addLiability(payload)
+
+      let savedId
+      if (editing) {
+        await updateLiability(payload)
+        savedId = editing.id
+      } else {
+        const created = await addLiability(payload)
+        savedId = created?.id
+      }
+
+      // Auto-create EMI plan when toggled and no plan exists yet
+      if (form.autoEmi && payload.dueDay && savedId && !existingEmiPlan) {
+        await addEmiPlan({
+          type:       'liability',
+          referenceId: savedId,
+          name:        payload.name,
+          amount:      emiAmount,
+          dayOfMonth:  payload.dueDay,
+          startDate:   new Date().toISOString().split('T')[0],
+          frequency:   'monthly',
+          isActive:    true,
+          notes:       '',
+          accountId:   null,
+        })
+      }
+
       close()
     } catch (err) {
       setError(err?.message || 'Failed to save. Please try again.')
@@ -659,6 +707,58 @@ export default function Liabilities() {
               ))}
             </div>
           </div>
+
+          {/* ── Auto-EMI section ── */}
+          {(form.minimumPayment || form.deadline) && form.dueDay && (
+            <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 space-y-3">
+              <div className="flex items-center gap-2">
+                <HiSparkles className="w-4 h-4 text-indigo-500 shrink-0" />
+                <span className="text-sm font-semibold text-indigo-800">Auto-create EMI Plan</span>
+              </div>
+
+              {existingEmiPlan ? (
+                <p className="text-xs text-indigo-600">
+                  An EMI plan already exists for this liability. Edit it from the EMI page.
+                </p>
+              ) : (
+                <>
+                  <p className="text-xs text-indigo-600">
+                    {form.deadline && parseFloat(form.balance) > 0
+                      ? `Suggested EMI: ${formatCurrency(computedEmi)}/mo (balance ÷ ${Math.max(1, Math.round((new Date(form.deadline) - new Date()) / (1000 * 60 * 60 * 24 * 30.44)))} months)`
+                      : `Suggested EMI: ${formatCurrency(computedEmi)}/mo (from min. payment)`}
+                  </p>
+
+                  <div className="flex items-center gap-3">
+                    <div
+                      onClick={() => set('autoEmi', !form.autoEmi)}
+                      className={`relative w-10 h-6 rounded-full cursor-pointer transition-colors shrink-0
+                        ${form.autoEmi ? 'bg-indigo-600' : 'bg-gray-300'}`}>
+                      <div className={`absolute top-1 w-4 h-4 bg-white rounded-full shadow transition-transform
+                        ${form.autoEmi ? 'translate-x-5' : 'translate-x-1'}`} />
+                    </div>
+                    <span className="text-sm text-indigo-800">
+                      {form.autoEmi ? 'Will create EMI plan on save' : 'Enable to auto-create EMI plan'}
+                    </span>
+                  </div>
+
+                  {form.autoEmi && (
+                    <div>
+                      <label className="label">EMI Amount (NPR) — editable</label>
+                      <input
+                        type="number" min="1" step="1" placeholder={String(computedEmi)}
+                        className="input-field"
+                        value={form.customEmiAmount}
+                        onChange={e => set('customEmiAmount', e.target.value)}
+                      />
+                      <p className="text-[10px] text-indigo-500 mt-1">
+                        Due on day {form.dueDay} each month · {formatCurrency(emiAmount)}/mo
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           <div className="flex gap-3 pt-2">
             <button type="button" onClick={close} disabled={saving} className="btn-secondary flex-1">Cancel</button>
